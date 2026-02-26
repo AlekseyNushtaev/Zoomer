@@ -1,10 +1,11 @@
 import sqlite3
+import urllib.parse
 from datetime import datetime
 
 from bot import sql
 from botapi_sender import send_message
 from config import ADMIN_IDS
-from keyboard import create_kb, ref_keyboard
+from keyboard import create_kb
 from logging_config import logger
 import asyncio
 from aiogram import Router, Bot, F
@@ -193,7 +194,7 @@ async def broadcast_confirm_send(callback: CallbackQuery, state: FSMContext, bot
                 chat_id=user_id,
                 from_chat_id=broadcast_chat_id,
                 message_id=broadcast_message_id,
-                reply_markup=ref_keyboard(user_id),
+                reply_markup=keyboard_broadcast,
             )
             update_broadcast_status(user_id, 'sent')  # Успешная отправка
             await asyncio.sleep(0.05)
@@ -232,7 +233,8 @@ async def admin_broadcast(message: Message):
         return
 
     # 2. Получаем всех пользователей (без фильтрации)
-    users = sql.SELECT_ALL_USERS()
+    users = sql.SELECT_CONNECTED_SUBSCRIBE_YES()
+
     total = len(users)
 
     # 3. Отправляем стартовое сообщение
@@ -244,26 +246,20 @@ async def admin_broadcast(message: Message):
     blocked_updated = 0
     other_errors = 0
     text = '''
-🚀 <b>А у нас подъехал новый апдейт!</b>
+🔥<b> Хорошие новости: Happ работает стабильно!</b>
 
-Встречайте тариф <b>«🦾 Включи мобильный»</b>
+Если у вас бывают обрывы связи — не терпите. Просто смените приложение на <b>Happ</b> или сразу напишите нам в <a href="https://t.me/suppzoomvpn">Поддержку</a>. Мы всё починим 🤝
 
-Теперь можно обходить <b>белые списки</b> сайтов на мобильном интернете. Удобно? Да.
-
-Что в тарифе:
-✅ Пользование <b>1 устройством</b>
-✅ <b>75 ГБ</b> трафика
-
-🔥 Приобрести можно в разделе <b>«🛒 Купить подписку»</b>
-
-И не забывай про друзей, у кого лагает ВПН. 
-Жми на кнопку и зови их к нам! 👇
+📱 <b>Пользуетесь и всё нравится?</b>
+Не жадничайте, скиньте этот пост контактам, у которых вечно нет нормального VPN. Сделайте им подарок 😉
         '''
     button_text = "Пригласить друзей🫶"
-
+    url = f"https://t.me/share/url?url=https://t.me/zoomerskyvpn_bot?start=ref{1012882762}&text={urllib.parse.quote('Держи надежный VPN, там еще и большой пробный период!')}"
+    # Отправка сообщения через botapi_sender
+    send_message(chat_id=1012882762, text=text, button_text=button_text, url=url)
     for user_id in users:
         try:
-            url = f"https://t.me/share/url?url=https://t.me/zoomerskyvpn_bot?start=ref{user_id}"
+            url = f"https://t.me/share/url?url=https://t.me/zoomerskyvpn_bot?start=ref{user_id}&text={urllib.parse.quote('Держи надежный VPN, там еще и большой пробный период!')}"
             # Отправка сообщения через botapi_sender
             response = send_message(chat_id=user_id, text=text, button_text=button_text, url=url)
 

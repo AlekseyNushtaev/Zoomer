@@ -17,7 +17,8 @@ def send_message(chat_id, text, button_text, url):
     payload = {
         "chat_id": chat_id,
         "text": text,
-        "parse_mode": "HTML"
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True
     }
     if reply_markup:
         payload['reply_markup'] = json.dumps(reply_markup)
