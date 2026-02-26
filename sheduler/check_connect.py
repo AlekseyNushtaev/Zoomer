@@ -13,13 +13,13 @@ async def check_connect():
     logger.info(f'Всего активных юзеров - {len(lst_active)}')
 
     cnt = 0
-    for user_lst in lst_active:
-        user_data = sql.SELECT_ID(user_lst[0])
+    for user_id in lst_active:
+        user_data = sql.SELECT_ID(user_id)
         if user_data is not None:
             if not user_data[5]:
                 try:
-                    sql.UPDATE_TARIFF(user_lst[0], True)
-                    logger.info(f'{user_lst[0]} подключался к ВПН')
+                    sql.UPDATE_TARIFF(user_id, True)
+                    logger.info(f'{user_id} подключался к ВПН')
                     cnt += 1
                     await asyncio.sleep(0.05)
                 except Exception as e:
