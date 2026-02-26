@@ -3,12 +3,15 @@ import hashlib
 import uuid
 
 import requests
+import urllib3
 
 from config import PANEL_API_TOKEN, PANEL_URL
 from logging_config import logger
 from config_bd.users import SQL
 import random
 import string
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class X3:
