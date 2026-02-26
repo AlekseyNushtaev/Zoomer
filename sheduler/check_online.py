@@ -12,8 +12,8 @@ async def check_online_daily():
         logger.info("📊 Запуск сбора статистики online")
 
         # 1. Получаем всех пользователей из панели
-        x3.test_connect()
-        users_x3 = x3.get_all_users()
+        await x3.test_connect()
+        users_x3 = await x3.get_all_users()
         users_panel = len(users_x3)
 
         # 2. Фильтруем тех, кто был онлайн сегодня

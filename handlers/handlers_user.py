@@ -149,6 +149,7 @@ async def process_start_command(message: Message, command: Command):
 
 @router.callback_query(F.data == 'check_channel')
 async def check_chanel(callback: CallbackQuery):
+    await callback.answer()
     """Проверка подписки на канал"""
     try:
         chat_member = await bot.get_chat_member(
@@ -177,13 +178,14 @@ async def check_chanel(callback: CallbackQuery):
 
 @router.callback_query(F.data == 'buy_vpn')
 async def buy_vpn_cb(callback: CallbackQuery):
+    await callback.answer()
     user_data = sql.SELECT_ID(callback.from_user.id)
     has_paid_subscription = False
 
     if user_data is not None and len(user_data) > 4:
         has_paid_subscription = user_data[4]
 
-    result_active = x3.activ(str(callback.from_user.id))
+    result_active = await x3.activ(str(callback.from_user.id))
 
     if result_active['activ'] == '🔎 - Не подключён' and not has_paid_subscription:
         await callback.message.answer(text=lexicon['buy'],
@@ -197,11 +199,12 @@ async def buy_vpn_cb(callback: CallbackQuery):
 
 @router.callback_query(F.data == 'connect_vpn')
 async def direct_connect_vpn_cb(callback: CallbackQuery):
-    x3.test_connect()
+    await callback.answer()
+    await x3.test_connect()
     user_id = str(callback.from_user.id)
     user_id_white = user_id + '_white'
-    sub_url = x3.sublink(user_id)
-    sub_url_white = x3.sublink(user_id_white)
+    sub_url = await x3.sublink(user_id)
+    sub_url_white = await x3.sublink(user_id_white)
 
     if not sub_url and not sub_url_white:
         await callback.message.answer(lexicon['no_sub'])
@@ -216,6 +219,7 @@ async def direct_connect_vpn_cb(callback: CallbackQuery):
 
 @router.callback_query(F.data.in_({'r_30', 'r_90', 'r_180', 'r_white_30'}))
 async def process_payment_method(callback: CallbackQuery):
+    await callback.answer()
     if 'white' in callback.data:
         with engine.connect() as conn:
             # Проверяем, есть ли запись в white_counter для этого пользователя
@@ -233,6 +237,7 @@ async def process_payment_method(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith('sbp_'))
 async def process_payment_sbp(callback: CallbackQuery):
+    await callback.answer()
     gift_flag = False
     white_flag = False
     if 'gift_' in callback.data:
@@ -287,6 +292,7 @@ async def process_payment_sbp(callback: CallbackQuery):
 
 @router.callback_query(F.data == 'free_vpn')
 async def free_vpn_cb(callback: CallbackQuery):
+    await callback.answer()
     day = 5
 
     user_data = sql.SELECT_ID(callback.from_user.id)
@@ -298,10 +304,9 @@ async def free_vpn_cb(callback: CallbackQuery):
                                       reply_markup=keyboard_start())
         return
     # Проверка на наличие данных
-    x3.test_connect()
-    logger.info(x3.addClient(day, str(callback.from_user.id), int(callback.from_user.id)))
-    x3.test_connect()
-    result_active = x3.activ(str(callback.from_user.id))
+    await x3.test_connect()
+    logger.info(await x3.addClient(day, str(callback.from_user.id), int(callback.from_user.id)))
+    result_active = await x3.activ(str(callback.from_user.id))
     time = result_active['time']
 
     # Проверка на наличие данных
@@ -310,7 +315,7 @@ async def free_vpn_cb(callback: CallbackQuery):
     else:
         sql.INSERT(callback.from_user.id, True)
     user_id = str(callback.from_user.id)
-    sub_url = x3.sublink(user_id)
+    sub_url = await x3.sublink(user_id)
 
     await callback.message.answer(text=lexicon['buy_success'].format(time),
                                   reply_markup=keyboard_subscription(sub_url, None),
@@ -319,6 +324,7 @@ async def free_vpn_cb(callback: CallbackQuery):
 
 @router.callback_query(F.data == 'info')
 async def faq(callback: CallbackQuery):
+    await callback.answer()
     user_data = sql.SELECT_ID(callback.from_user.id)
     has_paid_subscription = False
     if user_data is not None and len(user_data) > 4:
@@ -339,6 +345,7 @@ async def faq(callback: CallbackQuery):
 
 @router.callback_query(F.data == 'ref')
 async def referral_program(callback: CallbackQuery):
+    await callback.answer()
     count = sql.SELECT_COUNT_REF(int(callback.from_user.id))
     await callback.message.answer(
         text=lexicon['ref_info'].format(count, callback.from_user.id),
@@ -349,6 +356,7 @@ async def referral_program(callback: CallbackQuery):
 
 @router.callback_query(F.data == 'buy_gift')
 async def gift_subscription_start(callback: CallbackQuery):
+    await callback.answer()
     """Начало процесса подарка подписки"""
     await callback.message.answer(
         lexicon['gift_start'],
@@ -358,6 +366,7 @@ async def gift_subscription_start(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith('gift_'))
 async def process_gift_payment_method(callback: CallbackQuery):
+    await callback.answer()
     if 'white' in callback.data:
         with engine.connect() as conn:
             # Проверяем, есть ли запись в white_counter для этого пользователя
@@ -406,7 +415,7 @@ async def activate_gift(message: Message, gift_id: str):
         conn.commit()
 
         # Активируем подписку для получателя
-        x3.test_connect()
+        await x3.test_connect()
         user_id = message.from_user.id
         user_id_str = str(message.from_user.id)
         if white_flag:
@@ -414,16 +423,16 @@ async def activate_gift(message: Message, gift_id: str):
 
 
         # Проверяем существует ли пользователь
-        existing_user = x3.get_user_by_username(user_id_str)
+        existing_user = await x3.get_user_by_username(user_id_str)
 
         if existing_user and 'response' in existing_user and existing_user['response']:
-            response = x3.updateClient(duration, user_id_str, user_id)
+            response = await x3.updateClient(duration, user_id_str, user_id)
         else:
-            response = x3.addClient(duration, user_id_str, user_id)
+            response = await x3.addClient(duration, user_id_str, user_id)
 
         if response:
             # Получаем информацию о подписке
-            result_active = x3.activ(user_id_str)
+            result_active = await x3.activ(user_id_str)
             subscription_time = result_active.get('time', '-')
 
             # Обновляем базу данных

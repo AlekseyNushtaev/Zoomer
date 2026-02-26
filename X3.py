@@ -2,12 +2,12 @@ import datetime
 import hashlib
 import uuid
 
-import requests
 import urllib3
+import aiohttp
 
 from config import PANEL_API_TOKEN, PANEL_URL
-from logging_config import logger
 from config_bd.users import SQL
+from logging_config import logger
 import random
 import string
 
@@ -28,62 +28,65 @@ class X3:
         self.params = {
             "vyWdoTBH": "VmsLiQrN"
         }
-        
-        self.ses = requests.Session()
-        self.ses.verify = False
+
+        self._session: aiohttp.ClientSession = None
         self.working_host = self.target_url
         self.is_authenticated = True
 
-    def authenticate(self):
-        """Заглушка для совместимости со старым кодом"""
-        return True
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Возвращает активную сессию aiohttp, создавая её при необходимости."""
+        if self._session is None or self._session.closed:
+            connector = aiohttp.TCPConnector(ssl=False)
+            self._session = aiohttp.ClientSession(
+                headers=self.headers,
+                connector=connector
+            )
+        return self._session
 
-    def ensure_authenticated(self):
-        """Заглушка для совместимости со старым кодом"""
-        return True
+    async def close(self):
+        """Закрывает сессию aiohttp (вызывать при завершении работы)."""
+        if self._session and not self._session.closed:
+            await self._session.close()
 
     def generate_client_id(self, tg_id):
-        """Генерирует client_id на основе telegram id"""
         tg_id_str = str(tg_id).encode('utf-8')
         hash_object = hashlib.sha1(tg_id_str)
-        client_id = hash_object.hexdigest()[:9]
-        return client_id
+        return hash_object.hexdigest()[:9]
 
     def list_from_host(self, host):
         """Заглушка для совместимости со старым кодом"""
         return {'obj': [{'settings': '{"clients": []}'}]}
 
-    def test_connect(self):
-        """Тестирует подключение к API"""
+    async def test_connect(self):
         try:
-            response = self.ses.get(
-                f"{self.target_url}/api/auth/status",
-                params=self.params,
-                timeout=5
-            )
-            logger.info(f"Тест подключения: {response.status_code}")
-            return [response]
+            session = await self._get_session()
+            async with session.get(
+                    f"{self.target_url}/api/auth/status",
+                    params=self.params,
+                    timeout=aiohttp.ClientTimeout(total=5)
+            ) as response:
+                logger.info(f"Тест подключения: {response.status}")
+                return response.status == 200
         except Exception as e:
             logger.error(f"Ошибка подключения: {e}")
-            return []
+            return False
 
-    def list(self, start):
-        """Получает список всех пользователей"""
+    async def list(self, start):
         try:
             params = self.params
             params['size'] = 1000
             params['start'] = start
-            response = self.ses.get(
-                f'{self.target_url}/api/users',
-                headers=self.headers,
-                params=self.params,
-                timeout=5
-            )
-            if response.status_code == 200:
-                return response.json()
-            else:
-                logger.error(f"HTTP {response.status_code}: {response.text}")
-                return {'response': {'users': []}}
+            session = await self._get_session()
+            async with session.get(
+                    f'{self.target_url}/api/users',
+                    params=params,
+                    timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                if resp.status == 200:
+                    return await resp.json()
+                else:
+                    logger.error(f"HTTP {resp.status}: {await resp.text()}")
+                    return {'response': {'users': []}}
         except Exception as e:
             logger.error(f"Ошибка запроса: {e}")
             return {'response': {'users': []}}
@@ -93,7 +96,7 @@ class X3:
         chars = string.ascii_letters + string.digits
         return ''.join(random.choice(chars) for _ in range(length))
 
-    def addClient(self, day, user_id_str, user_id):
+    async def addClient(self, day, user_id_str, user_id):
         """Добавляет нового клиента"""
         try:
             client_id = self.generate_client_id(user_id)
@@ -113,7 +116,8 @@ class X3:
             else:
                 squad_1 = ['6ba41467-be68-438c-ad6e-5a02f7df826c']
                 squad_2 = ['c6973051-58b7-484c-b669-6a123cda465b']
-                squad = random.choice([squad_1, squad_2])
+                squad_3 = ['a867561f-8736-4f67-8970-e20fddd00e5e']
+                squad = random.choice([squad_1, squad_2, squad_3])
                 trafficLimitStrategy = "NO_RESET"
                 trafficLimitBytes = 0
                 hwidDeviceLimit = 3
@@ -137,45 +141,51 @@ class X3:
 
             logger.info(f"Добавление клиента {user_id_str}, срок до: {expire_time}")
 
-            response = self.ses.post(
-                f"{self.target_url}/api/users",
-                headers=self.headers,
-                json=data,
-                params=self.params,
-                timeout=10
-            )
-            
-            logger.info(f"Код ответа: {response.status_code}")
-            
-            if response.status_code in [200, 201]:
-                response_data = response.json()
-                if response_data.get("success", True):
-                    subscription_end_date = expire_time.replace(tzinfo=datetime.timezone.utc)
+            session = await self._get_session()
+            async with session.post(
+                    f"{self.target_url}/api/users",
+                    json=data,
+                    params=self.params,
+                    timeout=aiohttp.ClientTimeout(total=15)
+            ) as response:
+                logger.info(f"Код ответа: {response.status}")
+
+                if response.status in [200, 201]:
                     sql = SQL()
-                    if 'white' in user_id_str:
-                        sql.update_white_subscription_end_date(user_id, subscription_end_date)
-                    else:
+                    try:
+                        response_data = await response.json()
+                    except (aiohttp.ClientConnectionError, aiohttp.ContentTypeError, ValueError) as e:
+                        # Сервер мог не вернуть JSON, но статус успешный
+                        logger.warning(f"Не удалось прочитать JSON при добавлении {user_id}: {e}. Считаем успехом.")
+                        subscription_end_date = expire_time.replace(tzinfo=datetime.timezone.utc)
                         sql.update_subscription_end_date(user_id, subscription_end_date)
-                    logger.info(f"✅ Клиент {user_id_str} успешно добавлен")
-                    return True
+                        logger.info(f"✅ Клиент {user_id} успешно добавлен (без JSON)")
+                        return True
+                    else:
+                        if response_data.get("success", True):
+                            subscription_end_date = expire_time.replace(tzinfo=datetime.timezone.utc)
+                            sql.update_subscription_end_date(user_id, subscription_end_date)
+                            logger.info(f"✅ Клиент {user_id} успешно добавлен")
+                            return True
+                        else:
+                            logger.warning(f"❌ API вернул ошибку: {response_data}")
+                            return False
                 else:
-                    logger.warning(f"❌ API вернул ошибку: {response.text}")
+                    error_text = await response.text() if response.content else "No body"
+                    logger.error(f"❌ Ошибка добавления клиента: HTTP {response.status} - {error_text}")
                     return False
-            else:
-                logger.error(f"❌ Ошибка добавления клиента: {response.text}")
-                return False
-                
+
         except Exception as e:
-            logger.error(f"❌ Ошибка при добавлении клиента {user_id_str}: {e}")
+            logger.error(f"❌ Ошибка при добавлении клиента {user_id}: {e}")
             import traceback
             logger.error(traceback.format_exc())
             return False
 
-    def updateClient(self, day, user_id_str, user_id):
+    async def updateClient(self, day, user_id_str, user_id):
         """Обновляет клиента - добавляет дни к подписке"""
         try:
             # Получаем данные пользователя
-            user_response = self.get_user_by_username(user_id_str)
+            user_response = await self.get_user_by_username(user_id_str)
 
             if not user_response or 'response' not in user_response:
                 logger.error(f"❌ Пользователь {user_id_str} не найден")
@@ -231,140 +241,111 @@ class X3:
             logger.info(f"  Новая дата: {new_expire_at.strftime('%Y-%m-%d %H:%M:%S')}")
             logger.info(f"  Добавлено дней: {day}")
 
-            # Отправляем PATCH запрос
-            response = self.ses.patch(
-                f"{self.target_url}/api/users",
-                headers=self.headers,
-                json=data,
-                params=self.params,
-                timeout=10
-            )
-            
-            logger.info(f"Код ответа: {response.status_code}")
-            
-            if response.status_code == 200:
-                response_data = response.json()
-                
-                if response_data.get("success", True):
-                    # Обновляем базу данных
+            session = await self._get_session()
+            async with session.patch(
+                    f"{self.target_url}/api/users",
+                    json=data,
+                    params=self.params,
+                    timeout=aiohttp.ClientTimeout(total=15)
+            ) as response:
+                logger.info(f"Код ответа updateClient: {response.status}")
+                if response.status == 200:
                     sql = SQL()
-                    if 'white' in user_id_str:
-                        sql.update_white_subscription_end_date(user_id, new_expire_at)
-                    else:
+                    try:
+                        response_data = await response.json()
+                    except (aiohttp.ClientConnectionError, aiohttp.ContentTypeError, ValueError) as e:
+                        logger.warning(f"Не удалось прочитать JSON при обновлении {user_id}: {e}. Считаем успехом.")
                         sql.update_subscription_end_date(user_id, new_expire_at)
-                    logger.info(f"✅ Клиент {user_id_str} успешно обновлён, добавлено {day} дней")
-                    return True
+                        logger.info(f"✅ Клиент {user_id} успешно обновлён (без JSON), добавлено {day} дней")
+                        return True
+                    else:
+                        if response_data.get("success", True):
+                            sql.update_subscription_end_date(user_id, new_expire_at)
+                            logger.info(f"✅ Клиент {user_id} успешно обновлён, добавлено {day} дней")
+                            return True
+                        else:
+                            logger.error(f"❌ API вернул success=false: {response_data}")
+                            return False
                 else:
-                    logger.error(f"❌ API вернул success=false: {response.text}")
+                    error_text = await response.text() if response.content else "No body"
+                    logger.error(f"❌ Ошибка обновления: HTTP {response.status}, {error_text}")
                     return False
-            else:
-                logger.error(f"❌ Ошибка обновления: HTTP {response.status_code}")
-                logger.error(f"Ответ: {response.text}")
-                return False
-                
+
         except Exception as e:
-            logger.error(f"❌ Ошибка при обновлении клиента {user_id_str}: {e}")
+            logger.error(f"❌ Ошибка при обновлении клиента {user_id}: {e}")
             import traceback
             logger.error(traceback.format_exc())
             return False
 
-    def get_user_by_username(self, username):
-        """Получает пользователя по username"""
+    async def get_user_by_username(self, username):
         try:
-            response = self.ses.get(
-                f"{self.target_url}/api/users/by-username/{username}",
-                headers=self.headers,
-                params=self.params,
-                timeout=5
-            )
-            
-            if response.status_code == 200:
-                return response.json()
-            else:
-                logger.error(f"Ошибка получения пользователя {username}: {response.text}")
-                return None
-                
+            session = await self._get_session()
+            async with session.get(
+                    f"{self.target_url}/api/users/by-username/{username}",
+                    params=self.params,
+                    timeout=aiohttp.ClientTimeout(total=10)
+            ) as resp:
+                if resp.status == 200:
+                    try:
+                        return await resp.json()
+                    except:
+                        logger.error(f"Не удалось прочитать JSON для пользователя {username}")
+                        return None
+                else:
+                    logger.error(f"Ошибка получения пользователя {username}: {await resp.text()}")
+                    return None
         except Exception as e:
             logger.error(f"Ошибка получения пользователя {username}: {e}")
             return None
 
-    def get_user_by_telegram_id(self, telegram_id):
-        """Получает пользователя по Telegram ID"""
+    async def get_user_by_telegram_id(self, telegram_id):
         try:
-            response = self.ses.get(
-                f"{self.target_url}/api/users/by-telegram-id/{telegram_id}",
-                headers=self.headers,
-                params=self.params,
-                timeout=5
-            )
-            
-            if response.status_code == 200:
-                return response.json()
-            else:
-                return None
-                
+            session = await self._get_session()
+            async with session.get(
+                    f"{self.target_url}/api/users/by-telegram-id/{telegram_id}",
+                    params=self.params,
+                    timeout=aiohttp.ClientTimeout(total=5)
+            ) as resp:
+                if resp.status == 200:
+                    try:
+                        return await resp.json()
+                    except:
+                        return None
+                else:
+                    return None
         except Exception as e:
-            logger.error(f"Ошибка получения пользователя: {e}")
+            logger.error(f"Ошибка получения пользователя по telegram_id {telegram_id}: {e}")
             return None
 
-    def sublink(self, user_id_str: str):
-        """Генерирует ссылку подписки для пользователя"""
+    async def sublink(self, user_id: str):
         try:
-            users = self.get_user_by_username(user_id_str)
-            if users and 'response' in users and users['response']:
-                user = users['response']
-                return user.get('subscriptionUrl', '')
-        except Exception as e:
-            logger.error(f"Ошибка при генерации ссылки для {user_id_str}: {e}")
-        
-        return ""
-
-    def time_active(self, user_id: str):
-        """Получает информацию об активном времени пользователя"""
-        dict_x = {}
-        
-        try:
-            users = self.get_user_by_telegram_id(user_id)
-            
+            users = await self.get_user_by_telegram_id(user_id)
             if users and 'response' in users and users['response']:
                 user = users['response'][0]
-                if user.get('status') == 'ACTIVE':
-                    expiry_time = user.get('expireAt')
-                    if expiry_time:
-                        expiry_dt = datetime.datetime.fromisoformat(expiry_time.replace('Z', '+00:00'))
-                        epoch = datetime.datetime.utcfromtimestamp(0)
-                        expiry_ms = int((expiry_dt - epoch).total_seconds() * 1000.0)
-                        dict_x[user.get('uuid', '0')] = expiry_ms
-                        return dict_x
-
+                return user.get('subscriptionUrl', '')
         except Exception as e:
-            logger.error(f"Ошибка при получении времени активности для {user_id}: {e}")
+            logger.error(f"Ошибка при получении ссылки для {user_id}: {e}")
+        return ""
 
-        dict_x['0'] = '0'
-        return dict_x
 
-    def activ(self, user_id: str):
-        """Проверяет активность подписки пользователя"""
+    async def activ(self, user_id: str):
         result = {'activ': '🔎 - Не подключён', 'time': '-'}
-
         try:
-            users = self.get_user_by_username(user_id)
-
+            users = await self.get_user_by_telegram_id(user_id)
             if not users or 'response' not in users or not users['response']:
                 logger.info(f"Пользователь {user_id} не найден в системе")
                 return result
 
-            user = users['response']
+            user = users['response'][0]
             current_time = int(datetime.datetime.utcnow().timestamp() * 1000)
-            
+
             expiry_time_str = user.get('expireAt')
             if not expiry_time_str:
                 return result
-            
+
             expiry_dt = datetime.datetime.fromisoformat(expiry_time_str.replace('Z', '+00:00'))
             expiry_time = int(expiry_dt.timestamp() * 1000)
-            
-            # Форматируем время для отображения (добавляем 3 часа для МСК)
+
             expiry_dt_msk = expiry_dt + datetime.timedelta(hours=3)
             readable_time = expiry_dt_msk.strftime('%d-%m-%Y %H:%M') + ' МСК'
             result['time'] = readable_time
@@ -373,7 +354,7 @@ class X3:
                 result['activ'] = '✅ - Активен'
             else:
                 result['activ'] = '❌ - Не Активен'
-            
+
             return result
 
         except Exception as e:
@@ -381,58 +362,50 @@ class X3:
             result['activ'] = '❌ - Внутренняя ошибка'
             return result
 
-    def activ_list(self):
-        """Получает список всех клиентов"""
+    async def activ_list(self):
         lst_users = []
-
         try:
             users_all = []
             for i in range(50):
-                data = self.list(1000 * i + 1)
-                if len(data['response']['users']) != 0:
+                data = await self.list(1000 * i + 1)
+                if data['response']['users']:
                     users_all.extend(data['response']['users'])
                 else:
                     break
             logger.info(f'Всего юзеров в панели - {len(users_all)}')
             for user in users_all:
-                if user['firstConnectedAt'] and user['description'] != 'New user - without pay':
-                    try:
-                        lst_users.append([int(user['telegramId']), user['expireAt']])
-                    except:
-                        pass
-
+                if user.get('firstConnectedAt') and user.get('description') == 'New user - without pay':
+                    telegram_id = user.get('telegramId')
+                    if telegram_id is not None:
+                        lst_users.append(int(telegram_id))
+            logger.info(f'Всего юзеров подключенных - {len(lst_users)}')
         except Exception as e:
             logger.error(f"Ошибка при получении списка активности: {e}")
-
         return lst_users
 
-
-    def get_all_users(self):
-        """Получает список всех клиентов"""
+    async def get_all_users(self):
+        """
+        Возвращает список всех пользователей из панели (объекты пользователей),
+        у которых description == 'New user - without pay'.
+        """
         lst_users = []
-
         try:
             users_all = []
-            for i in range(50):
-                data = self.list(1000 * i + 1)
-                if len(data['response']['users']) != 0:
+            for i in range(50):  # максимум 50 страниц
+                data = await self.list(1000 * i + 1)
+                if data['response']['users']:
                     users_all.extend(data['response']['users'])
                 else:
                     break
             logger.info(f'Всего юзеров в панели - {len(users_all)}')
             for user in users_all:
-                if user['description'] != 'New user - without pay':
-                    try:
-                        lst_users.append(user)
-                    except:
-                        pass
-
+                if user.get('description') != 'New user - without pay':
+                    lst_users.append(user)
         except Exception as e:
-            logger.error(f"Ошибка при получении списка активности: {e}")
-
+            logger.error(f"Ошибка при получении всех пользователей: {e}")
         return lst_users
 
-    def update_user_squads(self, user_uuid: str, squads: list):
+    async def update_user_squads(self, user_uuid: str, squads: list):
         """
         Обновляет поле activeInternalSquads у пользователя по его UUID.
         :param user_uuid: UUID пользователя в панели
@@ -444,24 +417,31 @@ class X3:
                 "uuid": user_uuid,
                 "activeInternalSquads": squads
             }
-            response = self.ses.patch(
-                f"{self.target_url}/api/users",
-                headers=self.headers,
-                json=data,
-                params=self.params,
-                timeout=10
-            )
-            if response.status_code == 200:
-                response_data = response.json()
-                if response_data.get("success", True):
-                    logger.info(f"✅ Squad обновлён для UUID {user_uuid}")
-                    return True
+            session = await self._get_session()
+            async with session.patch(
+                    f"{self.target_url}/api/users",
+                    json=data,
+                    params=self.params,
+                    timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+                if response.status == 200:
+                    try:
+                        response_data = await response.json()
+                    except (aiohttp.ClientConnectionError, aiohttp.ContentTypeError, ValueError) as e:
+                        logger.warning(
+                            f"Не удалось прочитать JSON при обновлении squads для UUID {user_uuid}: {e}. Считаем успехом.")
+                        return True
+                    else:
+                        if response_data.get("success", True):
+                            logger.info(f"✅ Squad обновлён для UUID {user_uuid}")
+                            return True
+                        else:
+                            logger.error(f"❌ API вернул ошибку: {response_data}")
+                            return False
                 else:
-                    logger.error(f"❌ API вернул ошибку: {response.text}")
+                    error_text = await response.text() if response.content else "No body"
+                    logger.error(f"❌ Ошибка HTTP {response.status}: {error_text}")
                     return False
-            else:
-                logger.error(f"❌ Ошибка HTTP {response.status_code}: {response.text}")
-                return False
         except Exception as e:
             logger.error(f"❌ Исключение при обновлении squads: {e}")
             return False

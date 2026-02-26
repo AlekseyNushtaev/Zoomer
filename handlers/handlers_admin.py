@@ -221,7 +221,7 @@ async def delete_user_command(message: Message):
 async def check_online(message: Message):
     if message.from_user.id not in ADMIN_IDS:
         return
-    users_x3 = x3.get_all_users()
+    users_x3 = await x3.get_all_users()
 
     active_telegram_ids = []
     for user in users_x3:
@@ -260,20 +260,21 @@ async def check_online(message: Message):
 async def check_online(message: Message):
     squad_1 = ['6ba41467-be68-438c-ad6e-5a02f7df826c']
     squad_2 = ['c6973051-58b7-484c-b669-6a123cda465b']
+    squad_3 = ['a867561f-8736-4f67-8970-e20fddd00e5e']
     success_count = 0
     fail_count = 0
     if message.from_user.id not in ADMIN_IDS:
         return
-    users_x3 = x3.get_all_users()
+    users_x3 = await x3.get_all_users()
     for user in users_x3:
         await asyncio.sleep(0.3)
-        random_squad = random.choice([squad_1, squad_2])
+        random_squad = random.choice([squad_1, squad_2, squad_3])
         username = user.get('username', '')
-        if 'white' not in username:
+        if 'white' not in username and 'cascade-bridge-system' not in username:
             uuid = user.get('uuid')
             connect = user.get('firstConnectedAt')
             if uuid and connect:
-                if x3.update_user_squads(uuid, random_squad):
+                if await x3.update_user_squads(uuid, random_squad):
                     success_count += 1
                 else:
                     fail_count += 1

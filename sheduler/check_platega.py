@@ -1,8 +1,7 @@
 from sqlalchemy import select, update
-from aiogram import Bot
 
 from bot import bot
-from config import TG_TOKEN, PLATEGA_API_KEY, PLATEGA_MERCHANT_ID
+from config import PLATEGA_API_KEY, PLATEGA_MERCHANT_ID
 from config_bd.BaseModel import engine, payments
 from logging_config import logger
 from payments.process_payload import process_confirmed_payment

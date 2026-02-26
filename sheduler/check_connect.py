@@ -8,8 +8,8 @@ from logging_config import logger
 async def check_connect():
     """Проверка подключившихся пользователей к впн и обновление в базе Is_pay_null"""
 
-    x3.test_connect()
-    lst_active = x3.activ_list()
+    await x3.test_connect()
+    lst_active = await x3.activ_list()
     logger.info(f'Всего активных юзеров - {len(lst_active)}')
 
     cnt = 0

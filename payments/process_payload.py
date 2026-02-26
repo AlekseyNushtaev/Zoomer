@@ -94,27 +94,27 @@ async def process_confirmed_payment(payload):
 
         else:
             # Обработка обычного платежа
-            x3.test_connect()
+            await x3.test_connect()
             user_id_str = str(user_id)
             if white_flag:
                 user_id_str += '_white'
 
             # Проверяем существует ли пользователь
-            existing_user = x3.get_user_by_username(user_id_str)
+            existing_user = await x3.get_user_by_username(user_id_str)
 
             if existing_user and 'response' in existing_user and existing_user['response']:
                 logger.info(f"⏫ Обновляем {user_id_str} на {duration} дней")
-                response = x3.updateClient(duration, user_id_str, user_id)
+                response = await x3.updateClient(duration, user_id_str, user_id)
             else:
                 logger.info(f"➕ Добавляем {user_id_str} на {duration} дней")
-                response = x3.addClient(duration, user_id_str, user_id)
+                response = await x3.addClient(duration, user_id_str, user_id)
 
             if not response:
                 logger.error(f"❌ Не удалось обновить клиента {user_id_str}")
                 return
 
             # Получаем информацию о подписке
-            result_active = x3.activ(user_id_str)
+            result_active = await x3.activ(user_id_str)
             subscription_time = result_active.get('time', '-')
 
             # Обновляем дату окончания подписки в БД
@@ -150,15 +150,15 @@ async def process_confirmed_payment(payload):
                                     logger.info(f"🎁 Начисляем 7 дней рефереру {ref_id} за приглашение")
 
                                     # Добавляем 7 дней подписки рефереру
-                                    x3.test_connect()
-                                    ref_existing = x3.get_user_by_username(str(ref_id))
+                                    await x3.test_connect()
+                                    ref_existing = await x3.get_user_by_username(str(ref_id))
 
                                     if ref_existing and 'response' in ref_existing and ref_existing['response']:
-                                        x3.updateClient(7, str(ref_id), ref_id)
+                                        await x3.updateClient(7, str(ref_id), ref_id)
                                         logger.info(f"✅ Обновлена подписка реферера {ref_id} на 7 дней")
 
                                     # Обновляем дату подписки реферера в БД
-                                    ref_result_active = x3.activ(str(ref_id))
+                                    ref_result_active = await x3.activ(str(ref_id))
                                     ref_subscription_time = ref_result_active.get('time', '-')
 
                                     if ref_subscription_time != '-':
@@ -194,7 +194,7 @@ async def process_confirmed_payment(payload):
 
             # Отправляем уведомление пользователю
             try:
-                sub_link = x3.sublink(user_id_str)
+                sub_link = await x3.sublink(user_id_str)
                 marker = 'продлена' if existing_user else 'активирована'
                 message_text = lexicon['payment_success'].format(marker, subscription_time, amount, currency, duration, sub_link)
 
