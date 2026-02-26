@@ -9,6 +9,7 @@ from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.filters import Command
 
+from sheduler.check_connect import check_connect
 
 router = Router()
 
@@ -295,3 +296,18 @@ async def check_online(message: Message):
                 else:
                     fail_count += 1
     await message.answer(f"{len(users_x3)} - всего юзеров в панели\n{success_count + fail_count} - подключенных\n{success_count} - обновлено\n{fail_count} - ошибка")
+
+
+@router.message(Command(commands=['check_connect']))
+async def force_check_connect_command(message: Message):
+    """Принудительная проверка подключённых пользователей и обновление Is_tarif в БД"""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    await message.answer("🔄 Запускаю проверку подключений всех пользователей...")
+    try:
+        await check_connect()  # функция уже содержит логику обновления Is_tarif
+        await message.answer("✅ Проверка завершена. Подробности в логах.")
+    except Exception as e:
+        logger.error(f"Ошибка при выполнении force_check_connect: {e}")
+        await message.answer(f"❌ Произошла ошибка: {e}")
