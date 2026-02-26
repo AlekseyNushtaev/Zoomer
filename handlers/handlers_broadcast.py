@@ -4,7 +4,7 @@ from datetime import datetime
 from bot import sql
 from botapi_sender import send_message
 from config import ADMIN_IDS
-from keyboard import create_kb
+from keyboard import create_kb, ref_keyboard
 from logging_config import logger
 import asyncio
 from aiogram import Router, Bot, F
@@ -188,7 +188,7 @@ async def broadcast_confirm_send(callback: CallbackQuery, state: FSMContext, bot
                 chat_id=user_id,
                 from_chat_id=broadcast_chat_id,
                 message_id=broadcast_message_id,
-                reply_markup=keyboard_broadcast
+                reply_markup=ref_keyboard(user_id)
             )
             update_broadcast_status(user_id, 'sent')  # Успешная отправка
             await asyncio.sleep(0.25)

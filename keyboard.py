@@ -168,7 +168,7 @@ def ref_keyboard(user_id):
         [
             InlineKeyboardButton(
                 text="Пригласить друзей🫶",
-                url=f"https://t.me/share/url?url=https://t.me/zoomerskyvpn_bot?start=ref{user_id}&text={urllib.parse.quote('Вот ссылка для тебя на топовый ВПН!')}"
+                url=f"https://t.me/share/url?url=https://t.me/zoomerskyvpn_bot?start=ref{user_id}"
             )
         ],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")]
