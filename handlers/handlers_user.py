@@ -292,7 +292,6 @@ async def process_payment_sbp(callback: CallbackQuery):
 
 @router.callback_query(F.data == 'free_vpn')
 async def free_vpn_cb(callback: CallbackQuery):
-    await callback.answer()
     day = 5
 
     user_data = sql.SELECT_ID(callback.from_user.id)
@@ -320,6 +319,7 @@ async def free_vpn_cb(callback: CallbackQuery):
     await callback.message.answer(text=lexicon['buy_success'].format(time),
                                   reply_markup=keyboard_subscription(sub_url, None),
                                   disable_web_page_preview=True)
+    await callback.answer()
 
 
 @router.callback_query(F.data == 'info')
