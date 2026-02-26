@@ -17,7 +17,7 @@ def get_stars_amount(currency: str, duration: str) -> float:
     prices = {
         'Stars': {'30': 66, '90': 179, '120': 179, '180': 333, 'white_30': 199}
     }
-    return prices.get(currency.upper(), {}).get(duration, 0)
+    return prices.get(currency, {}).get(duration, 0)
 
 
 @router.callback_query(F.data.startswith('stars_'))
