@@ -199,7 +199,6 @@ async def buy_vpn_cb(callback: CallbackQuery):
 
 @router.callback_query(F.data == 'connect_vpn')
 async def direct_connect_vpn_cb(callback: CallbackQuery):
-    await callback.answer()
     await x3.test_connect()
     user_id = str(callback.from_user.id)
     user_id_white = user_id + '_white'
@@ -215,6 +214,7 @@ async def direct_connect_vpn_cb(callback: CallbackQuery):
         reply_markup=keyboard_subscription(sub_url, sub_url_white),
         disable_web_page_preview=True
     )
+    await callback.answer()
 
 
 @router.callback_query(F.data.in_({'r_30', 'r_90', 'r_180', 'r_white_30'}))

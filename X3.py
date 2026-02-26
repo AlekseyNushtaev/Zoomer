@@ -319,14 +319,13 @@ class X3:
 
     async def sublink(self, user_id: str):
         try:
-            users = await self.get_user_by_telegram_id(user_id)
+            users = await self.get_user_by_username(user_id)
             if users and 'response' in users and users['response']:
-                user = users['response'][0]
+                user = users['response']
                 return user.get('subscriptionUrl', '')
         except Exception as e:
             logger.error(f"Ошибка при получении ссылки для {user_id}: {e}")
         return ""
-
 
     async def activ(self, user_id: str):
         result = {'activ': '🔎 - Не подключён', 'time': '-'}
