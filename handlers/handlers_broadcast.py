@@ -182,7 +182,7 @@ async def broadcast_confirm_send(callback: CallbackQuery, state: FSMContext, bot
     count = 0
     # Отправляем сообщение пользователям
     user_ids.append(1012882762)
-    for user_id in user_ids:
+    for user_id in [1012882762]:
         try:
             await bot.copy_message(
                 chat_id=user_id,
