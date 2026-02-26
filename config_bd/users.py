@@ -453,7 +453,7 @@ class SQL:
             s = select(users.c.User_id).where(getattr(users.c, parameter) == value)
             result = self.session.execute(s).fetchall()
 
-            logger.info(f"Query result for parameter '{parameter}' with value '{value}': len{result}")
+            logger.info(f"Query result for parameter '{parameter}' with value '{value}': {len(result)}")
             return [row[0] for row in result]
         except Exception as e:
             logger.error(
