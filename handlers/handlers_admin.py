@@ -58,7 +58,7 @@ async def user_info(message: Message):
 
 @router.message(Command(commands=['sub']))
 async def set_subscription_date(message: Message):
-    """Установка subscription_end_date в БД (только БД, не в панели)"""
+    """Установка subscription_end_date или white_subscription_end_date в БД (только БД, не в панели)"""
 
     # Проверка прав администратора
     if message.from_user.id not in ADMIN_IDS:
@@ -71,19 +71,30 @@ async def set_subscription_date(message: Message):
 
         if len(args) < 3:
             await message.answer(
-                "❌ Использование: /sub <telegram_id> <дата_время>\n"
-                "Пример: /sub 123456789 2026-02-01 17:14:27\n"
+                "❌ Использование:\n"
+                "  /sub <telegram_id> <дата_время>               – обновить обычную подписку\n"
+                "  /sub <telegram_id> white <дата_время>         – обновить белую подписку\n"
+                "Примеры:\n"
+                "  /sub 123456789 2026-02-01 17:14:27\n"
+                "  /sub 123456789 white 2026-02-01 17:14:27\n"
                 "Формат даты: YYYY-MM-DD HH:MM:SS"
             )
             return
 
-        # Парсим аргументы
         user_id = int(args[1].strip())
-        date_str = " ".join(args[2:5])  # Объединяем дату и время
+
+        # Определяем тип обновляемого поля
+        if args[2].lower() == 'white':
+            field_type = 'white'
+            # Дата начинается с третьего аргумента
+            date_str = " ".join(args[3:])
+        else:
+            field_type = 'regular'
+            # Дата начинается со второго аргумента
+            date_str = " ".join(args[2:])
 
         # Парсим дату и время
         try:
-            # Пробуем разные форматы даты
             date_formats = [
                 "%Y-%m-%d %H:%M:%S",
                 "%Y-%m-%d %H:%M",
@@ -118,15 +129,20 @@ async def set_subscription_date(message: Message):
             await message.answer(f"❌ Пользователь с ID {user_id} не найден в базе данных.")
             return
 
-        # Обновляем дату подписки в БД
+        # Обновляем соответствующую дату в БД
         try:
-            sql.update_subscription_end_date(user_id, subscription_date)
-
-            # Получаем обновленные данные для проверки
-            updated_date = sql.get_subscription_end_date(user_id)
+            if field_type == 'white':
+                sql.update_white_subscription_end_date(user_id, subscription_date)
+                # Получаем обновлённое значение для проверки (white_subscription_end_date — индекс 10)
+                updated_date = user_data[10] if len(user_data) > 10 else None
+                field_name = "white_subscription_end_date"
+            else:
+                sql.update_subscription_end_date(user_id, subscription_date)
+                updated_date = sql.get_subscription_end_date(user_id)
+                field_name = "subscription_end_date"
 
             await message.answer(
-                f"✅ Дата подписки успешно обновлена!\n\n"
+                f"✅ Дата подписки ({field_name}) успешно обновлена!\n\n"
                 f"👤 Пользователь: {user_id}\n"
                 f"📅 Новая дата окончания: {subscription_date.strftime('%Y-%m-%d %H:%M:%S')}\n"
                 f"📝 Проверка из БД: {updated_date.strftime('%Y-%m-%d %H:%M:%S') if updated_date else 'Ошибка чтения'}\n\n"
@@ -134,8 +150,7 @@ async def set_subscription_date(message: Message):
             )
 
             logger.info(
-                f"Администратор {message.from_user.id} изменил subscription_end_date для пользователя {user_id} на {subscription_date}")
-
+                f"Администратор {message.from_user.id} изменил {field_name} для пользователя {user_id} на {subscription_date}")
         except Exception as e:
             await message.answer(f"❌ Ошибка при обновлении даты в БД: {str(e)}")
             logger.error(f"Ошибка update_subscription_end_date: {e}")
@@ -143,7 +158,8 @@ async def set_subscription_date(message: Message):
     except ValueError:
         await message.answer(
             "❌ Неверный формат Telegram ID или даты.\n"
-            "Используйте: /sub 123456789 2026-02-01 17:14:27"
+            "Используйте: /sub 123456789 2026-02-01 17:14:27\n"
+            "Или: /sub 123456789 white 2026-02-01 17:14:27"
         )
     except Exception as e:
         logger.error(f"Ошибка в команде /sub: {e}")
