@@ -69,13 +69,20 @@ async def broadcast_waiting_for_message(message: Message, state: FSMContext):
     ]:
         await message.answer("Этот тип контента не поддерживается для рассылки.")
         return
-
-    # Сохраняем сообщение (включая тип контента) в состоянии
-    await state.update_data(
-        broadcast_message_id=message.message_id,
-        broadcast_chat_id=message.chat.id,
-        broadcast_content_type=message.content_type
-    )
+    elif message.content_type == ContentType.TEXT:
+        mes = await message.answer(message.text, disable_web_page_preview=True)
+        await state.update_data(
+            broadcast_message_id=mes.message_id,
+            broadcast_chat_id=mes.chat.id,
+            broadcast_content_type=mes.content_type
+        )
+    else:
+        # Сохраняем сообщение (включая тип контента) в состоянии
+        await state.update_data(
+            broadcast_message_id=message.message_id,
+            broadcast_chat_id=message.chat.id,
+            broadcast_content_type=message.content_type
+        )
 
     # Запрашиваем список доступных параметров из базы данных
     parameters = sql.GET_AVAILABLE_PARAMETERS()  # Эта функция должна возвращать список доступных параметров
@@ -182,16 +189,16 @@ async def broadcast_confirm_send(callback: CallbackQuery, state: FSMContext, bot
     count = 0
     # Отправляем сообщение пользователям
     user_ids.append(1012882762)
-    for user_id in [1012882762]:
+    for user_id in user_ids:
         try:
             await bot.copy_message(
                 chat_id=user_id,
                 from_chat_id=broadcast_chat_id,
                 message_id=broadcast_message_id,
-                reply_markup=ref_keyboard(user_id)
+                reply_markup=ref_keyboard(user_id),
             )
             update_broadcast_status(user_id, 'sent')  # Успешная отправка
-            await asyncio.sleep(0.25)
+            await asyncio.sleep(0.05)
             count += 1
         except Exception as e:
             update_broadcast_status(user_id, 'failed')  # Ошибка отправки
