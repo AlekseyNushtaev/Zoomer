@@ -179,8 +179,6 @@ async def broadcast_confirm_send(callback: CallbackQuery, state: FSMContext, bot
         user_ids = sql.SELECT_NOT_SUBSCRIBED()
         keyboard_broadcast = create_kb(1, free_vpn='🔥 Попробовать бесплатно')
 
-    print(f"Users to send message: {user_ids}")
-
     # Проверяем, есть ли пользователи для отправки
     if not user_ids:
         await callback.message.edit_text("Нет пользователей, соответствующих выбранному параметру и значению.")
