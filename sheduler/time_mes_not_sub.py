@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from bot import sql, bot
+from bot import bot, sql
 from keyboard import create_kb
 from lexicon import lexicon
 from logging_config import logger
@@ -13,7 +13,7 @@ async def send_push_cron(debug: bool = False):
     """
     try:
         # Получаем всех пользователей с Is_tarif = False
-        all_users = sql.SELECT_ALL_USERS()
+        all_users = await sql.SELECT_ALL_USERS()
 
         if not all_users:
             logger.info("Нет пользователей для отправки push-уведомлений")
@@ -29,7 +29,7 @@ async def send_push_cron(debug: bool = False):
         for user_id in all_users:
             try:
                 # Получаем данные пользователя
-                user_data = sql.SELECT_ID(user_id)
+                user_data = await sql.SELECT_ID(user_id)
                 if not user_data:
                     continue
 

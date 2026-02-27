@@ -1,10 +1,6 @@
 from datetime import datetime
-from sqlalchemy import insert
-
 from bot import x3, sql
-from config_bd.BaseModel import engine, online
 from logging_config import logger
-
 
 async def check_online_daily():
     """Собирает статистику онлайн-активности и сохраняет в таблицу online"""
@@ -37,7 +33,7 @@ async def check_online_daily():
         users_pay = 0
         users_trial = 0
         for tg_id in active_telegram_ids:
-            end_date = sql.get_subscription_end_date(tg_id)
+            end_date = await sql.get_subscription_end_date(tg_id)
             if end_date is not None:
                 days_left = (end_date.date() - datetime.now().date()).days
                 if days_left > 5:
@@ -46,16 +42,7 @@ async def check_online_daily():
                     users_trial += 1
 
         # 4. Запись в БД
-        with engine.connect() as conn:
-            stmt = insert(online).values(
-                online_date=datetime.now(),
-                users_panel=users_panel,
-                users_active=users_active,
-                users_pay=users_pay,
-                users_trial=users_trial
-            )
-            conn.execute(stmt)
-            conn.commit()
+        await sql.add_online_stats(users_panel, users_active, users_pay, users_trial)
 
         logger.info(
             f"✅ Статистика online записана: "

@@ -9,13 +9,12 @@ from aiogram.filters import Command
 from aiogram.types import Message, BufferedInputFile
 from openpyxl.styles import Alignment, Border, Side, PatternFill
 from openpyxl.chart import LineChart, BarChart, Reference
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func
 
 from bot import sql
 from config import ADMIN_IDS
 from logging_config import logger
-from config_bd.BaseModel import engine, users, payments, payments_stars, payments_cryptobot
-
+from config_bd.models import AsyncSessionLocal, Users, Payments, PaymentsStars, PaymentsCryptobot
 
 router = Router()
 
@@ -33,10 +32,6 @@ EXCLUDE_IDS = list(range(45, 1046))
 
 # ---------- Вспомогательные функции конвертации ----------
 def convert_stars_to_rub(amount: int) -> Optional[int]:
-    """
-    Конвертирует сумму в звёздах в рубли.
-    Возвращает None, если сумма не соответствует ни одному тарифу.
-    """
     mapping = {
         66: 99,
         179: 269,
@@ -47,10 +42,6 @@ def convert_stars_to_rub(amount: int) -> Optional[int]:
 
 
 def convert_crypto_to_rub(currency: str, amount: str) -> Optional[int]:
-    """
-    Конвертирует сумму в криптовалюте (TON, USDT) в рубли.
-    Возвращает None, если валюта или сумма не соответствуют тарифам.
-    """
     mapping = {
         'TON': {'0.9': 99, '2.5': 269, '2.8': 299, '4.6': 499},
         'USDT': {'1.3': 99, '3.5': 269, '4.0': 299, '6.5': 499}
@@ -58,7 +49,6 @@ def convert_crypto_to_rub(currency: str, amount: str) -> Optional[int]:
     return mapping.get(currency, {}).get(amount)
 
 
-# ---------- Вспомогательный класс для унификации записей о платежах ----------
 class PaymentRecord:
     """Унифицированная запись о платеже."""
     def __init__(self, amount: int, is_gift: bool, time_created: datetime):
@@ -79,7 +69,7 @@ async def stat_command(message: Message):
         return
 
     arg = args[1].strip()
-    total, with_sub, with_tarif, total_payments, source = sql.get_stat_by_ref_or_stamp(arg)
+    total, with_sub, with_tarif, total_payments, source = await sql.get_stat_by_ref_or_stamp(arg)
 
     if total is None:
         await message.answer(f"{arg} - нет совпадений")
@@ -92,158 +82,183 @@ async def analytics_command(message: Message):
     if message.from_user.id not in ADMIN_IDS:
         return
 
-    # --- Определение текущего месяца ---
     now = datetime.now()
     start_date = datetime(now.year, now.month, 1, 0, 0, 0)
     last_day = calendar.monthrange(now.year, now.month)[1]
     end_date = datetime(now.year, now.month, last_day, 23, 59, 59)
 
-    with engine.connect() as conn:
+    async with AsyncSessionLocal() as session:
         # --- 1. Новые пользователи, взяли ключ, подключились ---
-        stmt_users = select(
-            users.c.Id,
-            users.c.User_id,
-            users.c.Ref,
-            users.c.stamp,
-            users.c.Is_pay_null,
-            users.c.Is_tarif
-        ).where(
-            and_(
-                users.c.Create_user.between(start_date, end_date),
-                ~users.c.Id.in_(EXCLUDE_IDS)
-            )
+        stmt_users = select(Users).where(
+            Users.create_user.between(start_date, end_date),
+            ~Users.id.in_(EXCLUDE_IDS)
         )
-        users_data = conn.execute(stmt_users).fetchall()
+        result = await session.execute(stmt_users)
+        users_data = result.scalars().all()
 
-        # Инициализация списков
         new_total = []
         new_zaliv = []
         new_saraf = []
-
         key_total = []
         key_zaliv = []
         key_saraf = []
-
         connect_total = []
         connect_zaliv = []
         connect_saraf = []
 
-        # Множества для быстрой проверки принадлежности к группам
         set_new_total = set()
         set_new_zaliv = set()
         set_new_saraf = set()
 
-        for row in users_data:
-            is_zaliv = (row.stamp != '') or (row.Ref in REF_ZALIV)
-            user_id = row.User_id
+        for user in users_data:
+            is_zaliv = (user.stamp != '') or (str(user.ref) in REF_ZALIV)
+            uid = user.user_id
 
-            new_total.append(user_id)
-            set_new_total.add(user_id)
+            new_total.append(uid)
+            set_new_total.add(uid)
             if is_zaliv:
-                new_zaliv.append(user_id)
-                set_new_zaliv.add(user_id)
+                new_zaliv.append(uid)
+                set_new_zaliv.add(uid)
             else:
-                new_saraf.append(user_id)
-                set_new_saraf.add(user_id)
+                new_saraf.append(uid)
+                set_new_saraf.add(uid)
 
-            if row.Is_pay_null:
-                key_total.append(user_id)
+            if user.is_pay_null:
+                key_total.append(uid)
                 if is_zaliv:
-                    key_zaliv.append(user_id)
+                    key_zaliv.append(uid)
                 else:
-                    key_saraf.append(user_id)
+                    key_saraf.append(uid)
 
-            if row.Is_tarif:
-                connect_total.append(user_id)
+            if user.is_tarif:
+                connect_total.append(uid)
                 if is_zaliv:
-                    connect_zaliv.append(user_id)
+                    connect_zaliv.append(uid)
                 else:
-                    connect_saraf.append(user_id)
+                    connect_saraf.append(uid)
 
-        # --- 2. Формируем множество пользователей, которые когда-либо платили (все таблицы) ---
-        # Платежи из основной таблицы payments (confirmed, не 1)
-        stmt_paid_main = select(payments.c.user_id).distinct().where(
-            and_(
-                payments.c.status == 'confirmed',
-                payments.c.amount != 1
-            )
+        # --- 2. Множество пользователей, которые когда-либо платили ---
+        # Основные платежи
+        stmt_main = select(Payments.user_id).distinct().where(
+            Payments.status == 'confirmed',
+            Payments.amount != 1
         )
-        paid_main = {row[0] for row in conn.execute(stmt_paid_main)}
+        result_main = await session.execute(stmt_main)
+        paid_main = {row[0] for row in result_main.all()}
 
-        # Платежи из payments_stars (confirmed)
-        stmt_paid_stars = select(payments_stars.c.user_id).distinct().where(
-            payments_stars.c.status == 'confirmed'
+        # Звёздные платежи
+        stmt_stars = select(PaymentsStars.user_id).distinct().where(
+            PaymentsStars.status == 'confirmed'
         )
-        paid_stars = {row[0] for row in conn.execute(stmt_paid_stars)}
+        result_stars = await session.execute(stmt_stars)
+        paid_stars = {row[0] for row in result_stars.all()}
 
-        # Платежи из payments_cryptobot (paid, не админские 0.02)
-        stmt_paid_crypto = select(payments_cryptobot.c.user_id).distinct().where(
-            and_(
-                payments_cryptobot.c.status == 'paid',
-                payments_cryptobot.c.amount > 0.02  # исключаем тестовые платежи
-            )
+        # Крипто-платежи
+        stmt_crypto = select(PaymentsCryptobot.user_id).distinct().where(
+            PaymentsCryptobot.status == 'paid',
+            PaymentsCryptobot.amount > 0.02
         )
-        paid_crypto = {row[0] for row in conn.execute(stmt_paid_crypto)}
+        result_crypto = await session.execute(stmt_crypto)
+        paid_crypto = {row[0] for row in result_crypto.all()}
 
         all_paid_users = paid_main.union(paid_stars).union(paid_crypto)
 
-        # --- 3. Платежи новых пользователей за период (из всех таблиц, конвертированные) ---
-        # Собираем все платежи за период в унифицированном виде
+        # --- 3. Платежи новых пользователей за период (конвертированные) ---
+        # Собираем все платежи за период
         all_period_payments: List[PaymentRecord] = []
 
-        # Основные платежи
-        stmt_main = select(
-            payments.c.user_id,
-            payments.c.amount,
-            payments.c.is_gift,
-            payments.c.time_created
+        # Основные
+        stmt_main_period = select(
+            Payments.user_id,
+            Payments.amount,
+            Payments.is_gift,
+            Payments.time_created
         ).where(
-            and_(
-                payments.c.time_created.between(start_date, end_date),
-                payments.c.amount != 1,
-                payments.c.status == 'confirmed'
-            )
+            Payments.time_created.between(start_date, end_date),
+            Payments.amount != 1,
+            Payments.status == 'confirmed'
         )
-        for user_id, amount, is_gift, time_created in conn.execute(stmt_main):
+        result_main_period = await session.execute(stmt_main_period)
+        for user_id, amount, is_gift, time_created in result_main_period.all():
             all_period_payments.append(PaymentRecord(amount, is_gift, time_created))
 
-        # Звёздные платежи
-        stmt_stars = select(
-            payments_stars.c.user_id,
-            payments_stars.c.amount,
-            payments_stars.c.is_gift,
-            payments_stars.c.time_created
+        # Звёздные
+        stmt_stars_period = select(
+            PaymentsStars.user_id,
+            PaymentsStars.amount,
+            PaymentsStars.is_gift,
+            PaymentsStars.time_created
         ).where(
-            and_(
-                payments_stars.c.time_created.between(start_date, end_date),
-                payments_stars.c.status == 'confirmed'
-            )
+            PaymentsStars.time_created.between(start_date, end_date),
+            PaymentsStars.status == 'confirmed'
         )
-        for user_id, amount, is_gift, time_created in conn.execute(stmt_stars):
+        result_stars_period = await session.execute(stmt_stars_period)
+        for user_id, amount, is_gift, time_created in result_stars_period.all():
             rub = convert_stars_to_rub(amount)
-            if rub is not None:
+            if rub:
                 all_period_payments.append(PaymentRecord(rub, is_gift, time_created))
 
-        # Крипто-платежи
-        stmt_crypto = select(
-            payments_cryptobot.c.user_id,
-            payments_cryptobot.c.amount,
-            payments_cryptobot.c.currency,
-            payments_cryptobot.c.is_gift,
-            payments_cryptobot.c.time_created
+        # Крипто
+        stmt_crypto_period = select(
+            PaymentsCryptobot.user_id,
+            PaymentsCryptobot.amount,
+            PaymentsCryptobot.currency,
+            PaymentsCryptobot.is_gift,
+            PaymentsCryptobot.time_created
         ).where(
-            and_(
-                payments_cryptobot.c.time_created.between(start_date, end_date),
-                payments_cryptobot.c.status == 'paid',
-                payments_cryptobot.c.amount > 0.02
-            )
+            PaymentsCryptobot.time_created.between(start_date, end_date),
+            PaymentsCryptobot.status == 'paid',
+            PaymentsCryptobot.amount > 0.02
         )
-        for user_id, amount, currency, is_gift, time_created in conn.execute(stmt_crypto):
+        result_crypto_period = await session.execute(stmt_crypto_period)
+        for user_id, amount, currency, is_gift, time_created in result_crypto_period.all():
             rub = convert_crypto_to_rub(currency, str(amount))
-            if rub is not None:
+            if rub:
                 all_period_payments.append(PaymentRecord(rub, is_gift, time_created))
 
-        # Фильтруем только платежи новых пользователей (зарегистрированных в этом месяце)
+        # Платежи новых пользователей
+        new_payments_data = []  # (user_id, amount)
+
+        # Основные
+        stmt_main_new = select(Payments.user_id, Payments.amount).where(
+            Payments.time_created.between(start_date, end_date),
+            Payments.amount != 1,
+            Payments.status == 'confirmed'
+        )
+        result_main_new = await session.execute(stmt_main_new)
+        for uid, amt in result_main_new.all():
+            if uid in set_new_total:
+                new_payments_data.append((uid, amt))
+
+        # Звёзды
+        stmt_stars_new = select(PaymentsStars.user_id, PaymentsStars.amount).where(
+            PaymentsStars.time_created.between(start_date, end_date),
+            PaymentsStars.status == 'confirmed'
+        )
+        result_stars_new = await session.execute(stmt_stars_new)
+        for uid, amt in result_stars_new.all():
+            if uid in set_new_total:
+                rub = convert_stars_to_rub(amt)
+                if rub:
+                    new_payments_data.append((uid, rub))
+
+        # Крипто
+        stmt_crypto_new = select(
+            PaymentsCryptobot.user_id,
+            PaymentsCryptobot.amount,
+            PaymentsCryptobot.currency
+        ).where(
+            PaymentsCryptobot.time_created.between(start_date, end_date),
+            PaymentsCryptobot.status == 'paid',
+            PaymentsCryptobot.amount > 0.02
+        )
+        result_crypto_new = await session.execute(stmt_crypto_new)
+        for uid, amt, cur in result_crypto_new.all():
+            if uid in set_new_total:
+                rub = convert_crypto_to_rub(cur, str(amt))
+                if rub:
+                    new_payments_data.append((uid, rub))
+
         pay_sum_total = 0
         pay_sum_zaliv = 0
         pay_sum_saraf = 0
@@ -251,59 +266,6 @@ async def analytics_command(message: Message):
         pay_users_zaliv = set()
         pay_users_saraf = set()
 
-        # Переделаем: Сначала соберём все платежи за период с user_id, а потом отфильтруем.
-        new_payments_data = []  # (user_id, amount)
-
-        # Основные
-        stmt_main2 = select(
-            payments.c.user_id,
-            payments.c.amount
-        ).where(
-            and_(
-                payments.c.time_created.between(start_date, end_date),
-                payments.c.amount != 1,
-                payments.c.status == 'confirmed'
-            )
-        )
-        for uid, amt in conn.execute(stmt_main2):
-            if uid in set_new_total:
-                new_payments_data.append((uid, amt))
-
-        # Звёзды
-        stmt_stars2 = select(
-            payments_stars.c.user_id,
-            payments_stars.c.amount
-        ).where(
-            and_(
-                payments_stars.c.time_created.between(start_date, end_date),
-                payments_stars.c.status == 'confirmed'
-            )
-        )
-        for uid, amt in conn.execute(stmt_stars2):
-            if uid in set_new_total:
-                rub = convert_stars_to_rub(amt)
-                if rub:
-                    new_payments_data.append((uid, rub))
-
-        # Крипто
-        stmt_crypto2 = select(
-            payments_cryptobot.c.user_id,
-            payments_cryptobot.c.amount,
-            payments_cryptobot.c.currency
-        ).where(
-            and_(
-                payments_cryptobot.c.time_created.between(start_date, end_date),
-                payments_cryptobot.c.status == 'paid',
-                payments_cryptobot.c.amount > 0.02
-            )
-        )
-        for uid, amt, cur in conn.execute(stmt_crypto2):
-            if uid in set_new_total:
-                rub = convert_crypto_to_rub(cur, str(amt))
-                if rub:
-                    new_payments_data.append((uid, rub))
-
-        # Теперь суммируем по группам
         for uid, amount in new_payments_data:
             pay_sum_total += amount
             pay_users_total.add(uid)
@@ -314,84 +276,61 @@ async def analytics_command(message: Message):
                 pay_sum_saraf += amount
                 pay_users_saraf.add(uid)
 
-        # --- 4. Общая статистика всех платежей за период (все пользователи) ---
-        # Собираем все платежи за период в рублях
+        # --- 4. Общая статистика всех платежей за период ---
         all_payments = []  # (amount, is_gift, time_created)
 
         # Основные
-        stmt_main_all = select(
-            payments.c.amount,
-            payments.c.is_gift,
-            payments.c.time_created
-        ).where(
-            and_(
-                payments.c.time_created.between(start_date, end_date),
-                payments.c.amount != 1,
-                payments.c.status == 'confirmed'
-            )
+        stmt_main_all = select(Payments.amount, Payments.is_gift, Payments.time_created).where(
+            Payments.time_created.between(start_date, end_date),
+            Payments.amount != 1,
+            Payments.status == 'confirmed'
         )
-        for amount, is_gift, time_created in conn.execute(stmt_main_all):
+        result_main_all = await session.execute(stmt_main_all)
+        for amount, is_gift, time_created in result_main_all.all():
             all_payments.append((amount, is_gift, time_created))
 
         # Звёзды
-        stmt_stars_all = select(
-            payments_stars.c.amount,
-            payments_stars.c.is_gift,
-            payments_stars.c.time_created
-        ).where(
-            and_(
-                payments_stars.c.time_created.between(start_date, end_date),
-                payments_stars.c.status == 'confirmed'
-            )
+        stmt_stars_all = select(PaymentsStars.amount, PaymentsStars.is_gift, PaymentsStars.time_created).where(
+            PaymentsStars.time_created.between(start_date, end_date),
+            PaymentsStars.status == 'confirmed'
         )
-        for amount, is_gift, time_created in conn.execute(stmt_stars_all):
+        result_stars_all = await session.execute(stmt_stars_all)
+        for amount, is_gift, time_created in result_stars_all.all():
             rub = convert_stars_to_rub(amount)
             if rub:
                 all_payments.append((rub, is_gift, time_created))
 
         # Крипто
         stmt_crypto_all = select(
-            payments_cryptobot.c.amount,
-            payments_cryptobot.c.currency,
-            payments_cryptobot.c.is_gift,
-            payments_cryptobot.c.time_created
+            PaymentsCryptobot.amount,
+            PaymentsCryptobot.currency,
+            PaymentsCryptobot.is_gift,
+            PaymentsCryptobot.time_created
         ).where(
-            and_(
-                payments_cryptobot.c.time_created.between(start_date, end_date),
-                payments_cryptobot.c.status == 'paid',
-                payments_cryptobot.c.amount > 0.02
-            )
+            PaymentsCryptobot.time_created.between(start_date, end_date),
+            PaymentsCryptobot.status == 'paid',
+            PaymentsCryptobot.amount > 0.02
         )
-        for amount, currency, is_gift, time_created in conn.execute(stmt_crypto_all):
+        result_crypto_all = await session.execute(stmt_crypto_all)
+        for amount, currency, is_gift, time_created in result_crypto_all.all():
             rub = convert_crypto_to_rub(currency, str(amount))
             if rub:
                 all_payments.append((rub, is_gift, time_created))
 
-        # Общая выручка и количество платежей
         total_revenue = sum(p[0] for p in all_payments)
         total_payments_count = len(all_payments)
-
-        # AOV
         aov = total_revenue / total_payments_count if total_payments_count else 0
 
-        # Общее количество пользователей (исключая тестовые ID)
-        stmt_total_users = select(func.count(users.c.Id)).where(~users.c.Id.in_(EXCLUDE_IDS))
-        total_users_count = conn.execute(stmt_total_users).scalar() or 0
-
-        # ARPU
+        stmt_total_users = select(func.count(Users.id)).where(~Users.id.in_(EXCLUDE_IDS))
+        total_users_count = (await session.execute(stmt_total_users)).scalar() or 0
         arpu = total_revenue / total_users_count if total_users_count else 0
 
-        # Разбивка по суммам: 99, 269, 299, 499 и подарки
-        sum_99_count = 0
-        sum_99_amount = 0
-        sum_269_count = 0
-        sum_269_amount = 0
-        sum_299_count = 0
-        sum_299_amount = 0
-        sum_499_count = 0
-        sum_499_amount = 0
-        gift_count = 0
-        gift_amount = 0
+        # Разбивка по суммам
+        sum_99_count = sum_99_amount = 0
+        sum_269_count = sum_269_amount = 0
+        sum_299_count = sum_299_amount = 0
+        sum_499_count = sum_499_amount = 0
+        gift_count = gift_amount = 0
 
         for amount, is_gift, _ in all_payments:
             if is_gift:
@@ -411,17 +350,14 @@ async def analytics_command(message: Message):
                     sum_499_count += 1
                     sum_499_amount += amount
 
-        # Разбивка по 4 периодам внутри месяца (примерно равные)
+        # Разбивка по 4 периодам внутри месяца
         total_days = last_day
         chunk_size = total_days // 4
         period_starts = []
         period_ends = []
         for i in range(4):
             start_day = 1 + i * chunk_size
-            if i == 3:
-                end_day = last_day
-            else:
-                end_day = start_day + chunk_size - 1
+            end_day = start_day + chunk_size - 1 if i < 3 else last_day
             period_starts.append(datetime(now.year, now.month, start_day, 0, 0, 0))
             period_ends.append(datetime(now.year, now.month, end_day, 23, 59, 59))
 
@@ -435,7 +371,6 @@ async def analytics_command(message: Message):
                     period_counts[i] += 1
                     break
 
-        # Формирование строк для периодов
         period_lines = []
         for i in range(4):
             rev = period_revenues[i]
@@ -446,7 +381,7 @@ async def analytics_command(message: Message):
                 f"{rev} ₽ / {cnt} плат. (ср. {avg:.2f} ₽)"
             )
 
-    # --- 5. Формирование отчёта ---
+    # --- Формирование отчёта ---
     report = (
         f"📊 Аналитика за период {start_date.strftime('%d.%m.%Y')} – {end_date.strftime('%d.%m.%Y')}\n\n"
         f"👥 <b>Новые пользователи:</b>\n"
@@ -477,10 +412,8 @@ async def analytics_command(message: Message):
         f"└ Подарки (is_gift): {gift_count} шт., сумма {gift_amount} ₽\n\n"
         f"📅 <b>Доход по периодам:</b>\n"
     )
-    # Добавляем строки периодов
     for line in period_lines:
         report += f"├ {line}\n"
-    # Примечание про ARPU
     report += f"\n* – общее количество пользователей (исключая ID 45–1045): {total_users_count}"
 
     await message.answer(report)
@@ -488,7 +421,6 @@ async def analytics_command(message: Message):
 
 @router.message(Command(commands=['anal_export']))
 async def analytics_export(message: Message):
-    """Экспорт помесячной аналитики в Excel (с января текущего года по текущий месяц)"""
     if message.from_user.id not in ADMIN_IDS:
         await message.answer("❌ Команда доступна только администраторам.")
         return
@@ -500,9 +432,7 @@ async def analytics_export(message: Message):
         current_year = now.year
         current_month = now.month
 
-        months = []
-        for month in range(1, current_month + 1):
-            months.append((current_year, month))
+        months = [(current_year, month) for month in range(1, current_month + 1)]
 
         monthly_data = {}
         daily_data_by_month = {}
@@ -513,24 +443,15 @@ async def analytics_export(message: Message):
             end_date = datetime(year, month, last_day, 23, 59, 59)
             month_key = start_date.strftime('%B %Y')
 
-            with engine.connect() as conn:
-                # --- 1. Новые пользователи за месяц ---
-                stmt_new_users = select(
-                    users.c.User_id,
-                    users.c.Ref,
-                    users.c.stamp,
-                    users.c.Is_pay_null,
-                    users.c.Is_tarif,
-                    users.c.Create_user
-                ).where(
-                    and_(
-                        users.c.Create_user.between(start_date, end_date),
-                        ~users.c.Id.in_(EXCLUDE_IDS)
-                    )
+            async with AsyncSessionLocal() as session:
+                # --- Новые пользователи за месяц ---
+                stmt_new_users = select(Users).where(
+                    Users.create_user.between(start_date, end_date),
+                    ~Users.id.in_(EXCLUDE_IDS)
                 )
-                new_users = conn.execute(stmt_new_users).fetchall()
+                result = await session.execute(stmt_new_users)
+                new_users = result.scalars().all()
 
-                # Инициализация списков для помесячной статистики
                 new_total = []
                 new_zaliv = []
                 new_saraf = []
@@ -540,23 +461,16 @@ async def analytics_export(message: Message):
                 connect_total = []
                 connect_zaliv = []
                 connect_saraf = []
-
                 set_new_total = set()
                 set_new_zaliv = set()
                 set_new_saraf = set()
 
-                # Для поденной статистики
-                daily_stats = {day: {
-                    'new': 0,
-                    'key': 0,
-                    'connect': 0,
-                    'paid': 0
-                } for day in range(1, last_day + 1)}
+                daily_stats = {day: {'new': 0, 'key': 0, 'connect': 0, 'paid': 0} for day in range(1, last_day + 1)}
 
-                for row in new_users:
-                    is_zaliv = (row.stamp != '') or (row.Ref in REF_ZALIV)
-                    uid = row.User_id
-                    create_day = row.Create_user.day
+                for user in new_users:
+                    is_zaliv = (user.stamp != '') or (str(user.ref) in REF_ZALIV)
+                    uid = user.user_id
+                    create_day = user.create_user.day
 
                     new_total.append(uid)
                     set_new_total.add(uid)
@@ -567,14 +481,14 @@ async def analytics_export(message: Message):
                         new_saraf.append(uid)
                         set_new_saraf.add(uid)
 
-                    if row.Is_pay_null:
+                    if user.is_pay_null:
                         key_total.append(uid)
                         if is_zaliv:
                             key_zaliv.append(uid)
                         else:
                             key_saraf.append(uid)
 
-                    if row.Is_tarif:
+                    if user.is_tarif:
                         connect_total.append(uid)
                         if is_zaliv:
                             connect_zaliv.append(uid)
@@ -582,73 +496,58 @@ async def analytics_export(message: Message):
                             connect_saraf.append(uid)
 
                     daily_stats[create_day]['new'] += 1
-                    if row.Is_pay_null:
+                    if user.is_pay_null:
                         daily_stats[create_day]['key'] += 1
-                    if row.Is_tarif:
+                    if user.is_tarif:
                         daily_stats[create_day]['connect'] += 1
 
-                # --- 2. Множество плативших пользователей (все таблицы) ---
-                stmt_paid_main = select(payments.c.user_id).distinct().where(
-                    and_(
-                        payments.c.status == 'confirmed',
-                        payments.c.amount != 1
-                    )
+                # --- Множество плативших ---
+                stmt_paid_main = select(Payments.user_id).distinct().where(
+                    Payments.status == 'confirmed',
+                    Payments.amount != 1
                 )
-                paid_main = {row[0] for row in conn.execute(stmt_paid_main)}
+                paid_main = {row[0] for row in (await session.execute(stmt_paid_main)).all()}
 
-                stmt_paid_stars = select(payments_stars.c.user_id).distinct().where(
-                    payments_stars.c.status == 'confirmed'
+                stmt_paid_stars = select(PaymentsStars.user_id).distinct().where(
+                    PaymentsStars.status == 'confirmed'
                 )
-                paid_stars = {row[0] for row in conn.execute(stmt_paid_stars)}
+                paid_stars = {row[0] for row in (await session.execute(stmt_paid_stars)).all()}
 
-                stmt_paid_crypto = select(payments_cryptobot.c.user_id).distinct().where(
-                    and_(
-                        payments_cryptobot.c.status == 'paid',
-                        payments_cryptobot.c.amount > 0.02
-                    )
+                stmt_paid_crypto = select(PaymentsCryptobot.user_id).distinct().where(
+                    PaymentsCryptobot.status == 'paid',
+                    PaymentsCryptobot.amount > 0.02
                 )
-                paid_crypto = {row[0] for row in conn.execute(stmt_paid_crypto)}
+                paid_crypto = {row[0] for row in (await session.execute(stmt_paid_crypto)).all()}
 
                 all_paid_users = paid_main.union(paid_stars).union(paid_crypto)
 
-                # Для поденной статистики отметим paid
                 for uid in set_new_total:
                     if uid in all_paid_users:
                         # найдём день регистрации
-                        for row in new_users:
-                            if row.User_id == uid:
-                                daily_stats[row.Create_user.day]['paid'] += 1
+                        for user in new_users:
+                            if user.user_id == uid:
+                                daily_stats[user.create_user.day]['paid'] += 1
                                 break
 
-                # --- 3. Платежи новых пользователей за этот месяц (все таблицы) ---
+                # --- Платежи новых пользователей за этот месяц ---
                 new_payments_amounts = []
 
                 # Основные
-                stmt_main_new = select(
-                    payments.c.user_id,
-                    payments.c.amount
-                ).where(
-                    and_(
-                        payments.c.time_created.between(start_date, end_date),
-                        payments.c.amount != 1,
-                        payments.c.status == 'confirmed'
-                    )
+                stmt_main_new = select(Payments.user_id, Payments.amount).where(
+                    Payments.time_created.between(start_date, end_date),
+                    Payments.amount != 1,
+                    Payments.status == 'confirmed'
                 )
-                for uid, amt in conn.execute(stmt_main_new):
+                for uid, amt in (await session.execute(stmt_main_new)).all():
                     if uid in set_new_total:
                         new_payments_amounts.append((uid, amt))
 
                 # Звёзды
-                stmt_stars_new = select(
-                    payments_stars.c.user_id,
-                    payments_stars.c.amount
-                ).where(
-                    and_(
-                        payments_stars.c.time_created.between(start_date, end_date),
-                        payments_stars.c.status == 'confirmed'
-                    )
+                stmt_stars_new = select(PaymentsStars.user_id, PaymentsStars.amount).where(
+                    PaymentsStars.time_created.between(start_date, end_date),
+                    PaymentsStars.status == 'confirmed'
                 )
-                for uid, amt in conn.execute(stmt_stars_new):
+                for uid, amt in (await session.execute(stmt_stars_new)).all():
                     if uid in set_new_total:
                         rub = convert_stars_to_rub(amt)
                         if rub:
@@ -656,17 +555,15 @@ async def analytics_export(message: Message):
 
                 # Крипто
                 stmt_crypto_new = select(
-                    payments_cryptobot.c.user_id,
-                    payments_cryptobot.c.amount,
-                    payments_cryptobot.c.currency
+                    PaymentsCryptobot.user_id,
+                    PaymentsCryptobot.amount,
+                    PaymentsCryptobot.currency
                 ).where(
-                    and_(
-                        payments_cryptobot.c.time_created.between(start_date, end_date),
-                        payments_cryptobot.c.status == 'paid',
-                        payments_cryptobot.c.amount > 0.02
-                    )
+                    PaymentsCryptobot.time_created.between(start_date, end_date),
+                    PaymentsCryptobot.status == 'paid',
+                    PaymentsCryptobot.amount > 0.02
                 )
-                for uid, amt, cur in conn.execute(stmt_crypto_new):
+                for uid, amt, cur in (await session.execute(stmt_crypto_new)).all():
                     if uid in set_new_total:
                         rub = convert_crypto_to_rub(cur, str(amt))
                         if rub:
@@ -689,51 +586,39 @@ async def analytics_export(message: Message):
                         pay_sum_saraf += amount
                         pay_users_saraf.add(uid)
 
-                # --- 4. Общие платежи за месяц (все пользователи) ---
+                # --- Общие платежи за месяц (все пользователи) ---
                 all_payments = []  # (amount, is_gift)
 
                 # Основные
-                stmt_main_all = select(
-                    payments.c.amount,
-                    payments.c.is_gift
-                ).where(
-                    and_(
-                        payments.c.time_created.between(start_date, end_date),
-                        payments.c.amount != 1,
-                        payments.c.status == 'confirmed'
-                    )
+                stmt_main_all = select(Payments.amount, Payments.is_gift).where(
+                    Payments.time_created.between(start_date, end_date),
+                    Payments.amount != 1,
+                    Payments.status == 'confirmed'
                 )
-                for amount, is_gift in conn.execute(stmt_main_all):
+                for amount, is_gift in (await session.execute(stmt_main_all)).all():
                     all_payments.append((amount, is_gift))
 
                 # Звёзды
-                stmt_stars_all = select(
-                    payments_stars.c.amount,
-                    payments_stars.c.is_gift
-                ).where(
-                    and_(
-                        payments_stars.c.time_created.between(start_date, end_date),
-                        payments_stars.c.status == 'confirmed'
-                    )
+                stmt_stars_all = select(PaymentsStars.amount, PaymentsStars.is_gift).where(
+                    PaymentsStars.time_created.between(start_date, end_date),
+                    PaymentsStars.status == 'confirmed'
                 )
-                for amount, is_gift in conn.execute(stmt_stars_all):
+                for amount, is_gift in (await session.execute(stmt_stars_all)).all():
                     rub = convert_stars_to_rub(amount)
                     if rub:
                         all_payments.append((rub, is_gift))
 
                 # Крипто
                 stmt_crypto_all = select(
-                    payments_cryptobot.c.amount,
-                    payments_cryptobot.c.currency,
-                    payments_cryptobot.c.is_gift
+                    PaymentsCryptobot.amount,
+                    PaymentsCryptobot.currency,
+                    PaymentsCryptobot.is_gift
                 ).where(
-                    and_(
-                        payments_cryptobot.c.time_created.between(start_date, end_date),
-                        payments_cryptobot.c.status == 'paid',
-                        payments_cryptobot.c.amount > 0.02
-                    )
+                    PaymentsCryptobot.time_created.between(start_date, end_date),
+                    PaymentsCryptobot.status == 'paid',
+                    PaymentsCryptobot.amount > 0.02
                 )
-                for amount, currency, is_gift in conn.execute(stmt_crypto_all):
+                for amount, currency, is_gift in (await session.execute(stmt_crypto_all)).all():
                     rub = convert_crypto_to_rub(currency, str(amount))
                     if rub:
                         all_payments.append((rub, is_gift))
@@ -742,26 +627,19 @@ async def analytics_export(message: Message):
                 total_payments_count = len(all_payments)
                 aov = total_revenue / total_payments_count if total_payments_count else 0
 
-                stmt_users_cumulative = select(func.count(users.c.Id)).where(
-                    and_(
-                        users.c.Create_user <= end_date,
-                        ~users.c.Id.in_(EXCLUDE_IDS)
-                    )
+                stmt_cumulative = select(func.count(Users.id)).where(
+                    Users.create_user <= end_date,
+                    ~Users.id.in_(EXCLUDE_IDS)
                 )
-                cumulative_users = conn.execute(stmt_users_cumulative).scalar() or 1
+                cumulative_users = (await session.execute(stmt_cumulative)).scalar() or 1
                 arpu = total_revenue / cumulative_users
 
                 # Разбивка по суммам
-                sum_99_count = 0
-                sum_99_amount = 0
-                sum_269_count = 0
-                sum_269_amount = 0
-                sum_299_count = 0
-                sum_299_amount = 0
-                sum_499_count = 0
-                sum_499_amount = 0
-                gift_count = 0
-                gift_amount = 0
+                sum_99_count = sum_99_amount = 0
+                sum_269_count = sum_269_amount = 0
+                sum_299_count = sum_299_amount = 0
+                sum_499_count = sum_499_amount = 0
+                gift_count = gift_amount = 0
 
                 for amount, is_gift in all_payments:
                     if is_gift:
@@ -781,7 +659,6 @@ async def analytics_export(message: Message):
                             sum_499_count += 1
                             sum_499_amount += amount
 
-                # Сохраняем все метрики для месяца
                 monthly_data[month_key] = {
                     'new_total': len(new_total),
                     'new_zaliv': len(new_zaliv),
@@ -816,20 +693,14 @@ async def analytics_export(message: Message):
                 }
 
                 # --- Поденные данные (кумулятивные) ---
-                stmt_users_before = select(
-                    users.c.User_id,
-                    users.c.Is_pay_null,
-                    users.c.Is_tarif
-                ).where(
-                    and_(
-                        users.c.Create_user < start_date,
-                        ~users.c.Id.in_(EXCLUDE_IDS)
-                    )
+                stmt_before = select(Users.user_id, Users.is_pay_null, Users.is_tarif).where(
+                    Users.create_user < start_date,
+                    ~Users.id.in_(EXCLUDE_IDS)
                 )
-                users_before = conn.execute(stmt_users_before).fetchall()
+                users_before = (await session.execute(stmt_before)).all()
                 cum_users_before = len(users_before)
-                cum_key_before = sum(1 for u in users_before if u.Is_pay_null)
-                cum_connect_before = sum(1 for u in users_before if u.Is_tarif)
+                cum_key_before = sum(1 for u in users_before if u.is_pay_null)
+                cum_connect_before = sum(1 for u in users_before if u.is_tarif)
 
                 daily_cumulative = []
                 cum_users = cum_users_before
@@ -837,20 +708,17 @@ async def analytics_export(message: Message):
                 cum_connect = cum_connect_before
 
                 for day in range(1, last_day + 1):
-                    day_new = daily_stats[day]['new']
-                    day_key = daily_stats[day]['key']
-                    day_connect = daily_stats[day]['connect']
-                    cum_users += day_new
-                    cum_key += day_key
-                    cum_connect += day_connect
+                    cum_users += daily_stats[day]['new']
+                    cum_key += daily_stats[day]['key']
+                    cum_connect += daily_stats[day]['connect']
                     daily_cumulative.append({
                         'day': day,
                         'cum_users': cum_users,
                         'cum_key': cum_key,
                         'cum_connect': cum_connect,
-                        'new': day_new,
-                        'key': day_key,
-                        'connect': day_connect,
+                        'new': daily_stats[day]['new'],
+                        'key': daily_stats[day]['key'],
+                        'connect': daily_stats[day]['connect'],
                         'paid': daily_stats[day]['paid']
                     })
 
@@ -912,28 +780,23 @@ async def analytics_export(message: Message):
                 col_idx += 1
             row_idx += 1
 
-        # Оформление (цвета и границы)
+        # Оформление
         yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
         light_green_fill = PatternFill(start_color="CCFFCC", end_color="CCFFCC", fill_type="solid")
         light_red_fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
         thin_border = Border(left=Side(style='thin'), right=Side(style='thin'),
                              top=Side(style='thin'), bottom=Side(style='thin'))
 
-        # Заголовки
         for cell in ws_main[1]:
             cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
             cell.border = thin_border
 
-        # Данные: раскраска и границы
         month_columns = list(monthly_data.keys())
         for r in range(2, row_idx):
             for c in range(1, ws_main.max_column + 1):
-                cell = ws_main.cell(row=r, column=c)
-                cell.border = thin_border
-            # Январь (первый месяц) – жёлтый
+                ws_main.cell(row=r, column=c).border = thin_border
             jan_cell = ws_main.cell(row=r, column=2)
             jan_cell.fill = yellow_fill
-            # Сравнение с предыдущим месяцем
             for col_idx in range(3, 2 + len(month_columns)):
                 current = ws_main.cell(row=r, column=col_idx)
                 prev = ws_main.cell(row=r, column=col_idx-1)
@@ -947,7 +810,6 @@ async def analytics_export(message: Message):
                 elif cur_val < prev_val:
                     current.fill = light_red_fill
 
-        # Автоподбор ширины
         for col in ws_main.columns:
             max_len = 0
             col_letter = col[0].column_letter
@@ -958,7 +820,7 @@ async def analytics_export(message: Message):
 
         ws_main.freeze_panes = 'B2'
 
-        # --- Листы по месяцам с графиками ---
+        # Листы по месяцам с графиками
         for month_key, daily_data in daily_data_by_month.items():
             ws = wb.create_sheet(title=month_key[:31])
             ws.append(['День', 'Новые', 'Взяли ключ', 'Подключились', 'Платили',

@@ -1,8 +1,5 @@
-from sqlalchemy import select, update
-
-from bot import bot
+from bot import bot, sql
 from config import PLATEGA_API_KEY, PLATEGA_MERCHANT_ID
-from config_bd.BaseModel import engine, payments
 from logging_config import logger
 from payments.process_payload import process_confirmed_payment
 from keyboard import keyboard_payment_cancel
@@ -17,10 +14,7 @@ async def check_platega():
 
     try:
         # Получаем все платежи со статусом 'pending'
-        with engine.connect() as conn:
-            stmt = select(payments).where(payments.c.status == 'pending')
-            result = conn.execute(stmt)
-            pending_payments = result.fetchall()
+        pending_payments = await sql.get_pending_platega_payments()
 
         if not pending_payments:
             logger.info("✅ Нет платежей со статусом 'pending' для проверки")
@@ -44,13 +38,7 @@ async def check_platega():
 
                     # Если статус изменился
                     if new_status != payment.status and new_status:
-                        # Обновляем статус в БД
-                        with engine.connect() as conn:
-                            update_stmt = update(payments).where(
-                                payments.c.transaction_id == transaction_id
-                            ).values(status=new_status)
-                            conn.execute(update_stmt)
-                            conn.commit()
+                        await sql.update_payment_status(transaction_id, new_status)
 
                         logger.info(f"🔄 Статус платежа {transaction_id} обновлен: {payment.status} → {new_status}")
 

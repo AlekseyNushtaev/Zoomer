@@ -9,14 +9,14 @@ from logging_config import logger
 
 
 async def send_message_cron(bot: Bot):
-    all_users = sql.SELECT_ALL_USERS()
+    all_users = await sql.SELECT_ALL_USERS()
     sent_count = 0  # Счетчик отправленных уведомлений
     failed_count = 0
     for user_id in all_users:
         end_date = None  # Инициализация переменной перед блоком try
         try:
             # Если метод get_subscription_end_date не асинхронный, убираем await
-            end_date = sql.get_subscription_end_date(user_id)
+            end_date = await sql.get_subscription_end_date(user_id)
             if end_date:
                 if isinstance(end_date, datetime):
                     end_date = end_date.date()  # Приводим к типу date, если это datetime
@@ -24,33 +24,33 @@ async def send_message_cron(bot: Bot):
                 days_left = (end_date - today).days
                 if days_left == 7 and not sql.notification_sent_today(user_id):
                     await bot.send_message(chat_id=user_id, text=lexicon['push_7'], reply_markup=keyboard_tariff())
-                    sql.mark_notification_as_sent(user_id)
+                    await sql.mark_notification_as_sent(user_id)
                     sent_count += 1
                 elif days_left == 3 and not sql.notification_sent_today(user_id):
                     await bot.send_message(chat_id=user_id, text=lexicon['push_3'], reply_markup=keyboard_tariff())
-                    sql.mark_notification_as_sent(user_id)
+                    await sql.mark_notification_as_sent(user_id)
                     sent_count += 1
                 elif days_left == 1 and not sql.notification_sent_today(user_id):
                     await bot.send_message(chat_id=user_id, text=lexicon['push_1'], reply_markup=keyboard_tariff())
-                    sql.mark_notification_as_sent(user_id)
+                    await sql.mark_notification_as_sent(user_id)
                     sent_count += 1
                 elif days_left == 0 and not sql.notification_sent_today(user_id):
                     await bot.send_message(chat_id=user_id, text=lexicon['push_0'], reply_markup=keyboard_tariff())
-                    sql.mark_notification_as_sent(user_id)
+                    await sql.mark_notification_as_sent(user_id)
                     sent_count += 1
                 elif days_left < 0:
-                    last_notification_date = sql.get_last_notification_date(user_id)
+                    last_notification_date = await sql.get_last_notification_date(user_id)
                     if last_notification_date:
                         if isinstance(last_notification_date, datetime):
                             last_notification_date = last_notification_date.date()  # Приводим к типу date
                     # Проверяем, прошло ли 7 дней с момента последнего уведомления
                     if not last_notification_date or (today - last_notification_date).days >= 7:
                         await bot.send_message(chat_id=user_id, text=lexicon['push_off'], reply_markup=keyboard_tariff())
-                        sql.mark_notification_as_sent(user_id)
+                        await sql.mark_notification_as_sent(user_id)
                         sent_count += 1
         except Exception as e:
             failed_count += 1
-            sql.UPDATE_DELETE(user_id, True)
+            await sql.UPDATE_DELETE(user_id, True)
         await asyncio.sleep(0.1)
 
     # Выводим обобщенную информацию в консоль

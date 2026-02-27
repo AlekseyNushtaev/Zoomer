@@ -4,6 +4,7 @@ from aiogram.types import BotCommand
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from bot import bot
+from config_bd.models import create_tables
 from payments import pay_stars, pay_cryptobot
 from sheduler.check_connect import check_connect
 from sheduler.check_cryptobot import check_cryptobot_payments
@@ -23,8 +24,9 @@ async def set_commands(bot: Bot):
 
 # Функция конфигурирования и запуска бота
 async def main() -> None:
-    # Инициализация диспетчера
+    await create_tables()
 
+    # Инициализация диспетчера
     dp: Dispatcher = Dispatcher()
     dp.include_router(handlers_broadcast.router)
     dp.include_router(handlers_admin.router)

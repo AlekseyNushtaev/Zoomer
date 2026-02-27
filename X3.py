@@ -6,7 +6,7 @@ import urllib3
 import aiohttp
 
 from config import PANEL_API_TOKEN, PANEL_URL
-from config_bd.users import SQL
+from config_bd.utils import AsyncSQL
 from logging_config import logger
 import random
 import string
@@ -152,7 +152,7 @@ class X3:
                 logger.info(f"Код ответа: {response.status}")
 
                 if response.status in [200, 201]:
-                    sql = SQL()
+                    sql = AsyncSQL()
                     try:
                         response_data = await response.json()
                     except (aiohttp.ClientConnectionError, aiohttp.ContentTypeError, ValueError) as e:
@@ -160,18 +160,18 @@ class X3:
                         logger.warning(f"Не удалось прочитать JSON при добавлении {user_id}: {e}. Считаем успехом.")
                         subscription_end_date = expire_time.replace(tzinfo=datetime.timezone.utc)
                         if 'white' in user_id_str:
-                            sql.update_white_subscription_end_date(user_id, subscription_end_date)
+                            await sql.update_white_subscription_end_date(user_id, subscription_end_date)
                         else:
-                            sql.update_subscription_end_date(user_id, subscription_end_date)
+                            await sql.update_subscription_end_date(user_id, subscription_end_date)
                         logger.info(f"✅ Клиент {user_id} успешно добавлен (без JSON)")
                         return True
                     else:
                         if response_data.get("success", True):
                             subscription_end_date = expire_time.replace(tzinfo=datetime.timezone.utc)
                             if 'white' in user_id_str:
-                                sql.update_white_subscription_end_date(user_id, subscription_end_date)
+                                await sql.update_white_subscription_end_date(user_id, subscription_end_date)
                             else:
-                                sql.update_subscription_end_date(user_id, subscription_end_date)
+                                await sql.update_subscription_end_date(user_id, subscription_end_date)
                             logger.info(f"✅ Клиент {user_id} успешно добавлен")
                             return True
                         else:
@@ -257,23 +257,23 @@ class X3:
             ) as response:
                 logger.info(f"Код ответа updateClient: {response.status}")
                 if response.status == 200:
-                    sql = SQL()
+                    sql = AsyncSQL()
                     try:
                         response_data = await response.json()
                     except (aiohttp.ClientConnectionError, aiohttp.ContentTypeError, ValueError) as e:
                         logger.warning(f"Не удалось прочитать JSON при обновлении {user_id}: {e}. Считаем успехом.")
                         if 'white' in user_id_str:
-                            sql.update_white_subscription_end_date(user_id, new_expire_at)
+                            await sql.update_white_subscription_end_date(user_id, new_expire_at)
                         else:
-                            sql.update_subscription_end_date(user_id, new_expire_at)
+                            await sql.update_subscription_end_date(user_id, new_expire_at)
                         logger.info(f"✅ Клиент {user_id} успешно обновлён (без JSON), добавлено {day} дней")
                         return True
                     else:
                         if response_data.get("success", True):
                             if 'white' in user_id_str:
-                                sql.update_white_subscription_end_date(user_id, new_expire_at)
+                                await sql.update_white_subscription_end_date(user_id, new_expire_at)
                             else:
-                                sql.update_subscription_end_date(user_id, new_expire_at)
+                                await sql.update_subscription_end_date(user_id, new_expire_at)
                             logger.info(f"✅ Клиент {user_id} успешно обновлён, добавлено {day} дней")
                             return True
                         else:

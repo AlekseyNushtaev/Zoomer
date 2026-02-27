@@ -1,25 +1,19 @@
-from sqlalchemy import select, update
-from bot import bot
+from bot import bot, sql
 from config import CRYPTOBOT_API_TOKEN
 from keyboard import keyboard_payment_cancel
 from lexicon import lexicon
 from logging_config import logger
-from config_bd.BaseModel import engine, payments_cryptobot
 from payments.pay_cryptobot import CryptoBotPayment
 from payments.process_payload import process_confirmed_payment
 
 
 async def check_cryptobot_payments():
     """Проверка статусов платежей Cryptobot и их обработка"""
-
     cryptobot = CryptoBotPayment(CRYPTOBOT_API_TOKEN)
 
     try:
-        # Получаем все платежи со статусом 'pending'
-        with engine.connect() as conn:
-            stmt = select(payments_cryptobot).where(payments_cryptobot.c.status == 'active')
-            result = conn.execute(stmt)
-            pending_payments = result.fetchall()
+        # Получаем все платежи со статусом 'active' через асинхронный метод
+        pending_payments = await sql.get_active_cryptobot_payments()
 
         if not pending_payments:
             logger.info("No pending Cryptobot payments")
@@ -44,18 +38,12 @@ async def check_cryptobot_payments():
                     processed += 1
                     continue
 
-                # Обновляем статус в БД
-                with engine.connect() as conn:
-                    update_stmt = update(payments_cryptobot).where(
-                        payments_cryptobot.c.id == payment.id
-                    ).values(status=status)
-                    conn.execute(update_stmt)
-                    conn.commit()
+                # Обновляем статус в БД через асинхронный метод
+                await sql.update_cryptobot_payment_status(payment.id, status)
 
                 logger.info(f"Payment {payment.id} status updated to {status}")
 
                 if status == 'paid':
-                    # Обрабатываем подтверждённый платёж
                     if payment.payload:
                         await process_confirmed_payment(payment.payload)
                     else:
@@ -63,7 +51,6 @@ async def check_cryptobot_payments():
                     confirmed += 1
                 elif status == 'expired':
                     expired += 1
-                    # Уведомляем пользователя
                     try:
                         user_id = payment.user_id
                         cancel_text = lexicon['payment_cancel']

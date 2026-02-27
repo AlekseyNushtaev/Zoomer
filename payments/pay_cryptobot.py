@@ -1,14 +1,13 @@
 import aiohttp
 from typing import Dict, Optional
-from sqlalchemy import insert
 from aiogram import F, Router
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
+from bot import sql
 from config import CRYPTOBOT_API_TOKEN, ADMIN_IDS
 from keyboard import create_kb
 from lexicon import lexicon
 from logging_config import logger
-from config_bd.BaseModel import engine, payments_cryptobot
 
 router: Router = Router()
 
@@ -92,7 +91,6 @@ async def create_cryptobot_payment(amount: float, currency: str, description: st
     Создание платежа через Cryptobot и запись в БД.
     Возвращает словарь с ключами: status, url, invoice_id.
     """
-
     cryptobot = CryptoBotPayment(CRYPTOBOT_API_TOKEN)
 
     # Формируем payload для последующей обработки
@@ -106,21 +104,16 @@ async def create_cryptobot_payment(amount: float, currency: str, description: st
         payload=payload
     )
     if result['status'] == 'pending':
-        # Сохраняем платёж в БД
+        # Сохраняем платёж в БД через AsyncSQL
         try:
-            with engine.connect() as conn:
-                stmt = insert(payments_cryptobot).values(
-                    user_id=user_id,
-                    amount=amount,
-                    currency=currency,
-                    is_gift=is_gift,
-                    status='active',
-                    invoice_id=result['invoice_id'],
-                    payload=payload
-                )
-                conn.execute(stmt)
-                conn.commit()
-            logger.info(f"Cryptobot invoice created: {result['invoice_id']} for user {user_id}")
+            await sql.add_cryptobot_payment(
+                user_id=user_id,
+                amount=amount,
+                currency=currency,
+                is_gift=is_gift,
+                invoice_id=result['invoice_id'],
+                payload=payload
+            )
         except Exception as e:
             logger.error(f"Error saving cryptobot payment to DB: {e}")
             return {'status': 'error', 'url': '', 'invoice_id': ''}
@@ -144,15 +137,12 @@ async def process_payment_crypto(callback: CallbackQuery):
     white_flag = False
     data = callback.data
 
-    # Определяем валюту (второй элемент после crypto_)
     parts = data.split('_')
-    currency = parts[1].upper()  # TON или USDT
+    currency = parts[1].upper()
 
-    # Проверяем наличие gift_
     if 'gift_' in data:
         gift_flag = True
 
-    # Извлекаем duration, удаляя префикс crypto_*_ и возможный gift_
     if gift_flag:
         duration = data.replace(f'crypto_{parts[1]}_gift_r_', '')
     else:
@@ -162,8 +152,6 @@ async def process_payment_crypto(callback: CallbackQuery):
         white_flag = True
         duration = duration.replace('white_', '')
 
-    desc_key = duration
-    # Получаем цену в выбранной криптовалюте
     crypto_amount = get_crypto_amount(currency, duration)
     if not crypto_amount:
         await callback.answer("Ошибка определения цены для данной валюты", show_alert=True)
@@ -172,7 +160,6 @@ async def process_payment_crypto(callback: CallbackQuery):
     if callback.from_user.id in ADMIN_IDS:
         crypto_amount = 0.02
 
-    # Создаём платёж
     result = await create_cryptobot_payment(
         amount=crypto_amount,
         currency=currency,
@@ -185,7 +172,6 @@ async def process_payment_crypto(callback: CallbackQuery):
     )
 
     if result['status'] == 'pending':
-        # Отправляем ссылку на оплату
         if white_flag:
             text = lexicon.get('payment_link_white', 'Оплата в {0}: {1}').format(currency, crypto_amount)
         else:

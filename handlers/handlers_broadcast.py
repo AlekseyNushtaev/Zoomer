@@ -1,6 +1,4 @@
-import sqlite3
 import urllib.parse
-from datetime import datetime
 
 from bot import sql
 from botapi_sender import send_message
@@ -24,22 +22,6 @@ class BroadcastState(StatesGroup):
     waiting_for_parameter = State()
     waiting_for_parameter_value = State()
     confirm_send = State()
-
-
-def update_broadcast_status(user_id, status):
-    conn = sqlite3.connect('sqlite3.db')  # Убедитесь, что путь к базе данных верный
-    cursor = conn.cursor()
-    try:
-        cursor.execute("""
-            UPDATE users
-            SET last_broadcast_status = ?, last_broadcast_date = ?
-            WHERE User_id = ?
-        """, (status, datetime.now().date(), user_id))
-        conn.commit()
-    except sqlite3.OperationalError as e:
-        logger.info(f"An error occurred: {e}")
-    finally:
-        conn.close()
 
 
 @router.message(Command(commands=['broadcast']))
@@ -116,17 +98,17 @@ async def confirm_broadcast(message: Message, state: FSMContext):
     selected_parameter = data.get('selected_parameter')
     user_ids = []
     if selected_parameter == "all_users":
-        user_ids = sql.SELECT_ALL_USERS()  # Получаем всех пользователей
+        user_ids = await sql.SELECT_ALL_USERS()  # Получаем всех пользователей
     elif selected_parameter == 'not_connected_subscribe_yes':
-        user_ids = sql.SELECT_NOT_CONNECTED_SUBSCRIBE_YES()
+        user_ids = await sql.SELECT_NOT_CONNECTED_SUBSCRIBE_YES()
     elif selected_parameter == 'not_connected_subscribe_off':
-        user_ids = sql.SELECT_NOT_CONNECTED_SUBSCRIBE_OFF()
+        user_ids = await sql.SELECT_NOT_CONNECTED_SUBSCRIBE_OFF()
     elif selected_parameter == 'connected_subscribe_off':
-        user_ids = sql.SELECT_CONNECTED_SUBSCRIBE_OFF()
+        user_ids = await sql.SELECT_CONNECTED_SUBSCRIBE_OFF()
     elif selected_parameter == 'connected_subscribe_yes':
-        user_ids = sql.SELECT_CONNECTED_SUBSCRIBE_YES()
+        user_ids = await sql.SELECT_CONNECTED_SUBSCRIBE_YES()
     elif selected_parameter == 'not_subscribed':
-        user_ids = sql.SELECT_NOT_SUBSCRIBED()
+        user_ids = await sql.SELECT_NOT_SUBSCRIBED()
 
     if not user_ids:
         await message.answer("Нет пользователей, соответствующих выбранному параметру и значению.")
@@ -162,22 +144,22 @@ async def broadcast_confirm_send(callback: CallbackQuery, state: FSMContext, bot
     keyboard_broadcast = None
     # Получаем пользователей по выбранному параметру
     if selected_parameter == "all_users":
-        user_ids = sql.SELECT_ALL_USERS()  # Получаем всех пользователей
+        user_ids = await sql.SELECT_ALL_USERS()  # Получаем всех пользователей
         keyboard_broadcast = create_kb(1, r_120='🔥 Акция: 120 дней - 269 руб')
     elif selected_parameter == 'not_connected_subscribe_yes':
-        user_ids = sql.SELECT_NOT_CONNECTED_SUBSCRIBE_YES()
+        user_ids = await sql.SELECT_NOT_CONNECTED_SUBSCRIBE_YES()
         keyboard_broadcast = create_kb(1, connect_vpn='🔗 Подключить VPN')
     elif selected_parameter == 'not_connected_subscribe_off':
-        user_ids = sql.SELECT_NOT_CONNECTED_SUBSCRIBE_OFF()
+        user_ids = await sql.SELECT_NOT_CONNECTED_SUBSCRIBE_OFF()
         keyboard_broadcast = create_kb(1, buy_vpn='🛒 Купить подписку')
     elif selected_parameter == 'connected_subscribe_off':
-        user_ids = sql.SELECT_CONNECTED_SUBSCRIBE_OFF()
+        user_ids = await sql.SELECT_CONNECTED_SUBSCRIBE_OFF()
         keyboard_broadcast = create_kb(1, r_120='🔥 Акция: 120 дней - 269 руб')
     elif selected_parameter == 'connected_subscribe_yes':
-        user_ids = sql.SELECT_CONNECTED_SUBSCRIBE_YES()
+        user_ids = await sql.SELECT_CONNECTED_SUBSCRIBE_YES()
         keyboard_broadcast = create_kb(1, r_120='🔥 Акция: 120 дней - 269 руб')
     elif selected_parameter == 'not_subscribed':
-        user_ids = sql.SELECT_NOT_SUBSCRIBED()
+        user_ids = await sql.SELECT_NOT_SUBSCRIBED()
         keyboard_broadcast = create_kb(1, free_vpn='🔥 Попробовать бесплатно')
 
     # Проверяем, есть ли пользователи для отправки
@@ -196,15 +178,15 @@ async def broadcast_confirm_send(callback: CallbackQuery, state: FSMContext, bot
                 message_id=broadcast_message_id,
                 reply_markup=keyboard_broadcast,
             )
-            update_broadcast_status(user_id, 'sent')  # Успешная отправка
+            await sql.update_broadcast_status(user_id, 'sent')  # Успешная отправка
             await asyncio.sleep(0.05)
             count += 1
         except Exception as e:
-            update_broadcast_status(user_id, 'failed')  # Ошибка отправки
+            await sql.update_broadcast_status(user_id, 'failed')  # Ошибка отправки
             logger.error(f"Failed to send message to {user_id}: {e}")
             error_text = str(e)
             if "403" in error_text or "blocked by the user" in error_text:
-                sql.UPDATE_DELETE(user_id, True)
+                await sql.UPDATE_DELETE(user_id, True)
     logger.success(f"Send broadcast to {count} users")
 
     await callback.message.edit_text(f"Сообщение успешно отправлено {count} пользователям.")
@@ -233,7 +215,7 @@ async def admin_broadcast(message: Message):
         return
 
     # 2. Получаем всех пользователей (без фильтрации)
-    users = sql.SELECT_CONNECTED_SUBSCRIBE_YES()
+    users = await sql.SELECT_CONNECTED_SUBSCRIBE_YES()
 
     total = len(users)
 
@@ -266,7 +248,7 @@ async def admin_broadcast(message: Message):
             # Предположим, что send_message возвращает словарь с ответом Telegram API
             if not response.get("ok") and response.get("error_code") == 403:
                 # Пользователь заблокировал бота → обновляем Is_delete = False
-                sql.UPDATE_DELETE(user_id, True)
+                await sql.UPDATE_DELETE(user_id, True)
                 blocked_updated += 1
             elif response.get("ok"):
                 success += 1
@@ -277,7 +259,7 @@ async def admin_broadcast(message: Message):
             # Альтернативный вариант, если send_message выбрасывает исключения
             error_text = str(e)
             if "403" in error_text or "blocked by the user" in error_text:
-                sql.UPDATE_DELETE(user_id, True)
+                await sql.UPDATE_DELETE(user_id, True)
                 blocked_updated += 1
             else:
                 other_errors += 1

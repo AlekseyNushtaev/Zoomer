@@ -116,7 +116,7 @@ def keyboard_subscription(sub_url, sub_url_white):
 def keyboard_sub_after_buy(sub_url):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📋 В личный кабинет", url=sub_url)],
-        [InlineKeyboardButton(text="🎁 Подарить подписку", callback_data="start_gift")],
+        [InlineKeyboardButton(text="🎁 Подарить подписку", callback_data="buy_gift")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data='back_to_main')],
     ])
     return keyboard

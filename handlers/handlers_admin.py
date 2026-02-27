@@ -37,7 +37,7 @@ async def user_info(message: Message):
         user_id = int(args[1].strip())
 
         # Проверяем, существует ли пользователь в БД
-        user_data = sql.SELECT_ID(user_id)
+        user_data = await sql.SELECT_ID(user_id)
 
         if not user_data:
             await message.answer(f"❌ Пользователь с ID {user_id} не найден в базе данных.")
@@ -124,7 +124,7 @@ async def set_subscription_date(message: Message):
             return
 
         # Проверяем, существует ли пользователь в БД
-        user_data = sql.SELECT_ID(user_id)
+        user_data = await sql.SELECT_ID(user_id)
 
         if not user_data:
             await message.answer(f"❌ Пользователь с ID {user_id} не найден в базе данных.")
@@ -133,13 +133,13 @@ async def set_subscription_date(message: Message):
         # Обновляем соответствующую дату в БД
         try:
             if field_type == 'white':
-                sql.update_white_subscription_end_date(user_id, subscription_date)
+                await sql.update_white_subscription_end_date(user_id, subscription_date)
                 # Получаем обновлённое значение для проверки (white_subscription_end_date — индекс 10)
                 updated_date = user_data[10] if len(user_data) > 10 else None
                 field_name = "white_subscription_end_date"
             else:
-                sql.update_subscription_end_date(user_id, subscription_date)
-                updated_date = sql.get_subscription_end_date(user_id)
+                await sql.update_subscription_end_date(user_id, subscription_date)
+                updated_date = await sql.get_subscription_end_date(user_id)
                 field_name = "subscription_end_date"
 
             await message.answer(
@@ -186,7 +186,7 @@ async def delete_user_command(message: Message):
         user_id_to_delete = int(args[1].strip())
 
         # Проверяем, существует ли пользователь в БД
-        user_data = sql.SELECT_ID(user_id_to_delete)
+        user_data = await sql.SELECT_ID(user_id_to_delete)
 
         if not user_data:
             await message.answer(f"❌ Пользователь с ID {user_id_to_delete} не найден в базе данных.")
@@ -201,7 +201,7 @@ async def delete_user_command(message: Message):
         }
 
         # УДАЛЯЕМ ПОЛЬЗОВАТЕЛЯ ИЗ БД
-        deletion_success = sql.DELETE(user_id_to_delete)
+        deletion_success = await sql.DELETE(user_id_to_delete)
 
         if deletion_success:
             # Логируем действие
@@ -258,7 +258,7 @@ async def check_online(message: Message):
     count_pay = 0
     count_trial = 0
     for tg_id in active_telegram_ids:
-        end_date = sql.get_subscription_end_date(tg_id)
+        end_date = await sql.get_subscription_end_date(tg_id)
         if end_date is not None:
             days_left = (end_date.date() - datetime.now().date()).days
             if days_left > 5:

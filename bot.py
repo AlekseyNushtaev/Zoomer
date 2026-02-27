@@ -4,14 +4,12 @@ from aiogram.client.default import DefaultBotProperties
 from X3 import X3
 from config import TG_TOKEN
 from typing import Optional
-from config_bd.users import SQL
-
-
+from config_bd.utils import AsyncSQL
 
 # Инициализация бота Telegram и классов БД и панели
 bot: Optional[Bot] = Bot(token=TG_TOKEN, default=DefaultBotProperties(parse_mode='HTML'))
 x3: Optional[X3] = X3()
-sql: Optional[SQL] = SQL()
+sql: Optional[AsyncSQL] = AsyncSQL()
 
 
 async def get_bot_username():
