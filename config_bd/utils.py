@@ -240,6 +240,7 @@ class AsyncSQL:
         """
         async with self.session_factory() as session:
             # Подзапрос: все пользователи с успешными платежами
+            today = datetime.now().date()
             paid_subq = (
                 select(Payments.user_id)
                 .where(Payments.status == 'confirmed')
@@ -252,6 +253,8 @@ class AsyncSQL:
             stmt = select(Users.user_id).where(
                 Users.is_tarif == True,
                 Users.is_delete == False,
+                (Users.last_broadcast_date.is_(None)) |
+                (func.date(Users.last_broadcast_date) != today),
                 Users.user_id.notin_(paid_subq)
             )
             result = await session.execute(stmt)
