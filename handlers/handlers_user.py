@@ -316,7 +316,7 @@ async def free_vpn_cb(callback: CallbackQuery):
     user_id = str(callback.from_user.id)
     sub_url = await x3.sublink(user_id)
 
-    await callback.message.answer(text=lexicon['buy_success'].format(time),
+    await callback.message.answer(text=lexicon['buy_success'].format(time, sub_url),
                                   reply_markup=keyboard_subscription(sub_url, None),
                                   disable_web_page_preview=True)
     await callback.answer()
