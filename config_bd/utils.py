@@ -232,6 +232,31 @@ class AsyncSQL:
             result = await session.execute(stmt)
             return [row[0] for row in result.all()]
 
+    async def SELECT_CONNECTED_NEVER_PAID(self) -> List[int]:
+        """
+        Возвращает список user_id, у которых is_tarif=True, is_delete=False,
+        и нет ни одной успешной оплаты (статус 'confirmed' в Payments или PaymentsStars,
+        или статус 'paid' в PaymentsCryptobot).
+        """
+        async with self.session_factory() as session:
+            # Подзапрос: все пользователи с успешными платежами
+            paid_subq = (
+                select(Payments.user_id)
+                .where(Payments.status == 'confirmed')
+                .union(
+                    select(PaymentsStars.user_id).where(PaymentsStars.status == 'confirmed'),
+                    select(PaymentsCryptobot.user_id).where(PaymentsCryptobot.status == 'paid')
+                )
+                .subquery()
+            )
+            stmt = select(Users.user_id).where(
+                Users.is_tarif == True,
+                Users.is_delete == False,
+                Users.user_id.notin_(paid_subq)
+            )
+            result = await session.execute(stmt)
+            return [row[0] for row in result.all()]
+
     async def SELECT_USERS_BY_PARAMETER(self, parameter: str, value: str) -> List[int]:
         """
         Возвращает список user_id, у которых значение указанного параметра равно value.
@@ -311,10 +336,16 @@ class AsyncSQL:
         return total, with_sub, with_tarif, total_payments, source
 
     def GET_AVAILABLE_PARAMETERS(self) -> List[str]:
-        """Возвращает список доступных параметров для фильтрации пользователей (синхронно)."""
-        return ['not_connected_subscribe_yes', 'not_connected_subscribe_off',
-                'connected_subscribe_off', 'connected_subscribe_yes',
-                'not_subscribed', 'all_users']
+        """Возвращает список доступных параметров для фильтрации пользователей."""
+        return [
+            'not_connected_subscribe_yes',
+            'not_connected_subscribe_off',
+            'connected_subscribe_off',
+            'connected_subscribe_yes',
+            'not_subscribed',
+            'connected_never_paid',
+            'all_users'
+        ]
 
     async def DELETE(self, user_id: int) -> bool:
         """Полностью удаляет пользователя из БД по User_id."""
