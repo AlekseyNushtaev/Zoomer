@@ -118,7 +118,7 @@ class X3:
                 squad_2 = ['c6973051-58b7-484c-b669-6a123cda465b']
                 squad_3 = ['a867561f-8736-4f67-8970-e20fddd00e5e']
                 squad_4 = ['29b73cd8-8a68-41cd-99c7-5d30dbac4c71']
-                squad = squad_4
+                squad = random.choice([squad_1, squad_2, squad_3, squad_4])
                 trafficLimitStrategy = "NO_RESET"
                 trafficLimitBytes = 0
                 hwidDeviceLimit = 3
