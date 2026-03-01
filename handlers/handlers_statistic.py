@@ -36,7 +36,11 @@ def convert_stars_to_rub(amount: int) -> Optional[int]:
         66: 99,
         179: 269,
         199: 299,
-        333: 499
+        333: 499,
+        99: 99,
+        269: 269,
+        299: 299,
+        499: 499
     }
     return mapping.get(amount)
 

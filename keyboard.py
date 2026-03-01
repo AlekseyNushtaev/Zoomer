@@ -43,7 +43,7 @@ def check_keyboard():
         [
             InlineKeyboardButton(
                 text="Подписаться на канал",
-                url="https://t.me/zoomerskyvpn"
+                url="https://t.me/+C3B1C6zruYc4M2Ey"
             )
         ],
         [
