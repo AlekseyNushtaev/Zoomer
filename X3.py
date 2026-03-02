@@ -80,9 +80,10 @@ class X3:
             async with session.get(
                     f'{self.target_url}/api/users',
                     params=params,
-                    timeout=aiohttp.ClientTimeout(total=10)
+                    timeout=aiohttp.ClientTimeout(total=15)
             ) as resp:
                 if resp.status == 200:
+                    logger.info(f'Получены юзеры с {start}')
                     return await resp.json()
                 else:
                     logger.error(f"HTTP {resp.status}: {await resp.text()}")
@@ -458,3 +459,24 @@ class X3:
         except Exception as e:
             logger.error(f"❌ Исключение при обновлении squads: {e}")
             return False
+
+    async def get_all_panel(self):
+        """
+        Возвращает список всех пользователей из панели (объекты пользователей),
+        у которых description == 'New user - without pay'.
+        """
+        lst_users = []
+        try:
+            users_all = []
+            for i in range(50):  # максимум 50 страниц
+                data = await self.list(1000 * i + 1)
+                if data['response']['users']:
+                    users_all.extend(data['response']['users'])
+                else:
+                    break
+            logger.info(f'Всего юзеров в панели - {len(users_all)}')
+            for user in users_all:
+                lst_users.append(user)
+        except Exception as e:
+            logger.error(f"Ошибка при получении всех пользователей: {e}")
+        return lst_users

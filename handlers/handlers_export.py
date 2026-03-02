@@ -1,9 +1,11 @@
 from datetime import datetime
+from pprint import pprint
+
 import openpyxl
 from aiogram import Router
 from openpyxl.styles import Alignment, Border, Side
 
-from bot import sql
+from bot import sql, x3
 from config import ADMIN_IDS
 from logging_config import logger
 from aiogram.types import Message, FSInputFile
@@ -285,3 +287,98 @@ async def export_database_to_excel(message: Message):
         logger.error(error_message)
         logger.exception("Детали ошибки:")
         await message.answer(error_message)
+
+
+@router.message(Command("export_panel"))
+async def export_panel(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    users_x3 = await x3.get_all_panel()
+    total = len(users_x3)
+    await message.answer(f"{total} - всего юзеров в панели. Формирую Excel...")
+    pprint(users_x3[0])
+
+    if not users_x3:
+        await message.answer("Нет пользователей для экспорта.")
+        return
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "panel_users"
+
+    # Заголовки
+    headers = [
+        "username", "telegramId", "expireAt",
+        "shortUuid", "vlessUuid", "trojanPassword", "ssPassword",
+        "description", "squad_uuid"
+    ]
+    ws.append(headers)
+
+    # Стили
+    header_alignment = Alignment(horizontal="center", vertical="center")
+    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'),
+                         top=Side(style='thin'), bottom=Side(style='thin'))
+
+    # Заголовки форматируем
+    for col_num, title in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_num, value=title)
+        cell.alignment = header_alignment
+        cell.border = thin_border
+
+    # Заполнение данными
+    for user in users_x3:
+        # Извлекаем squad (первый элемент списка activeInternalSquads, если есть)
+        squad_name = ""
+        squad_uuid = ""
+        if user.get('activeInternalSquads') and len(user['activeInternalSquads']) > 0:
+            squad = user['activeInternalSquads'][0]
+            squad_name = squad.get('name', '')
+            squad_uuid = squad.get('uuid', '')
+
+        # Форматируем даты (если есть)
+        def format_date(dt_str):
+            if dt_str:
+                try:
+                    dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+                    return dt.strftime('%Y-%m-%d %H:%M:%S')
+                except:
+                    return dt_str
+            return ""
+
+        row_data = [
+            user.get('username', ''),
+            user.get('telegramId', ''),
+            format_date(user.get('expireAt')),
+            user.get('shortUuid', ''),
+            user.get('vlessUuid', ''),
+            user.get('trojanPassword', ''),
+            user.get('ssPassword', ''),
+            user.get('description', ''),
+            squad_uuid
+        ]
+        ws.append(row_data)
+
+    # Автоширина колонок
+    for col in ws.columns:
+        max_len = 0
+        col_letter = col[0].column_letter
+        for cell in col:
+            if cell.value:
+                max_len = max(max_len, len(str(cell.value)))
+        ws.column_dimensions[col_letter].width = min(max_len + 2, 50)
+
+    # Заморозка заголовка
+    ws.freeze_panes = 'A2'
+
+    wb.save('panel.xlsx')
+
+    # Отправляем файл
+    from aiogram.types import BufferedInputFile
+    await message.answer_document(
+        document=FSInputFile('panel.xlsx',
+        filename=f"panel_users_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"),
+        caption=f"📊 Выгружено пользователей из панели: {total}"
+    )
+
+    logger.info(f"Администратор {message.from_user.id} выгрузил список пользователей панели")
