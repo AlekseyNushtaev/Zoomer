@@ -455,7 +455,6 @@ async def analytics_export(message: Message):
                 )
                 result = await session.execute(stmt_new_users)
                 new_users = result.scalars().all()
-                user_reg_day = {user.user_id: user.create_user.day for user in new_users}
 
                 new_total = []
                 new_zaliv = []
@@ -470,7 +469,7 @@ async def analytics_export(message: Message):
                 set_new_zaliv = set()
                 set_new_saraf = set()
 
-                daily_stats = {day: {'new': 0, 'key': 0, 'connect': 0, 'paid': 0, 'revenue': 0} for day in range(1, last_day + 1)}
+                daily_stats = {day: {'new': 0, 'key': 0, 'connect': 0, 'paid': 0} for day in range(1, last_day + 1)}
 
                 for user in new_users:
                     is_zaliv = (user.stamp != '') or (str(user.ref) in REF_ZALIV)
@@ -590,10 +589,6 @@ async def analytics_export(message: Message):
                     elif uid in set_new_saraf:
                         pay_sum_saraf += amount
                         pay_users_saraf.add(uid)
-                    # добавляем выручку в дневную статистику
-                    day = user_reg_day.get(uid)
-                    if day:
-                        daily_stats[day]['revenue'] += amount
 
                 # --- Общие платежи за месяц (все пользователи) ---
                 all_payments = []  # (amount, is_gift)
@@ -728,8 +723,7 @@ async def analytics_export(message: Message):
                         'new': daily_stats[day]['new'],
                         'key': daily_stats[day]['key'],
                         'connect': daily_stats[day]['connect'],
-                        'paid': daily_stats[day]['paid'],
-                        'revenue': daily_stats[day]['revenue']
+                        'paid': daily_stats[day]['paid']
                     })
 
                 daily_data_by_month[month_key] = daily_cumulative
@@ -833,10 +827,8 @@ async def analytics_export(message: Message):
         # Листы по месяцам с графиками
         for month_key, daily_data in daily_data_by_month.items():
             ws = wb.create_sheet(title=month_key[:31])
-            ws.append(['День', 'Новые', 'Взяли ключ', 'Подключились', 'Платили', 'Выручка от новых (₽)',
-                       'Всего пользователей (накопительно)', 'Всего ключей (накопительно)',
-                       'Всего подключений (накопительно)'])
-
+            ws.append(['День', 'Новые', 'Взяли ключ', 'Подключились', 'Платили',
+                       'Всего пользователей (накопительно)', 'Всего ключей (накопительно)', 'Всего подключений (накопительно)'])
             for d in daily_data:
                 ws.append([
                     d['day'],
@@ -844,7 +836,6 @@ async def analytics_export(message: Message):
                     d['key'],
                     d['connect'],
                     d['paid'],
-                    d['revenue'],
                     d['cum_users'],
                     d['cum_key'],
                     d['cum_connect']
