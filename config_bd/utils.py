@@ -30,7 +30,7 @@ class AsyncSQL:
 
     async def INSERT(self, user_id: int, Is_pay_null: bool, Is_tarif: bool = False,
                      ref: str = '', is_delete: bool = False, Is_admin: bool = False,
-                     stamp=None):
+                     stamp=''):
         async with self.session_factory() as session:
             user = Users(
                 user_id=user_id,
