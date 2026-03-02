@@ -28,18 +28,22 @@ async def send_message_cron(bot: Bot):
                 days_left = (end_date - today).days
                 if days_left == 7 and not await sql.notification_sent_today(user_id):
                     await bot.send_message(chat_id=user_id, text=lexicon['push_7'], reply_markup=keyboard_tariff())
+                    await asyncio.sleep(0.05)
                     await sql.mark_notification_as_sent(user_id)
                     sent_count_7 += 1
                 elif days_left == 3 and not await sql.notification_sent_today(user_id):
                     await bot.send_message(chat_id=user_id, text=lexicon['push_3'], reply_markup=keyboard_tariff())
+                    await asyncio.sleep(0.05)
                     await sql.mark_notification_as_sent(user_id)
                     sent_count_3 += 1
                 elif days_left == 1 and not await sql.notification_sent_today(user_id):
                     await bot.send_message(chat_id=user_id, text=lexicon['push_1'], reply_markup=keyboard_tariff())
+                    await asyncio.sleep(0.05)
                     await sql.mark_notification_as_sent(user_id)
                     sent_count_1 += 1
                 elif days_left == 0 and not await sql.notification_sent_today(user_id):
                     await bot.send_message(chat_id=user_id, text=lexicon['push_0'], reply_markup=keyboard_tariff())
+                    await asyncio.sleep(0.05)
                     await sql.mark_notification_as_sent(user_id)
                     sent_count_0 += 1
                 elif days_left < 0:
@@ -50,12 +54,12 @@ async def send_message_cron(bot: Bot):
                     # Проверяем, прошло ли 7 дней с момента последнего уведомления
                     if not last_notification_date or (today - last_notification_date).days >= 7:
                         await bot.send_message(chat_id=user_id, text=lexicon['push_off'], reply_markup=keyboard_tariff())
+                        await asyncio.sleep(0.05)
                         await sql.mark_notification_as_sent(user_id)
                         sent_count_week += 1
         except Exception as e:
             failed_count += 1
             await sql.UPDATE_DELETE(user_id, True)
-        await asyncio.sleep(0.1)
 
     await bot.send_message(1012882762, f'''
 Рассылка об окончании подписки:
