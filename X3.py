@@ -388,7 +388,7 @@ class X3:
                     break
             logger.info(f'Всего юзеров в панели - {len(users_all)}')
             for user in users_all:
-                if user.get('firstConnectedAt') and user.get('description') != 'New user - without pay':
+                if user.get('userTraffic', {}).get('firstConnectedAt') and user.get('description') != 'New user - without pay':
                     telegram_id = user.get('telegramId')
                     if telegram_id is not None:
                         lst_users.append(int(telegram_id))

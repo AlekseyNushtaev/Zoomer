@@ -26,19 +26,19 @@ async def send_message_cron(bot: Bot):
                     end_date = end_date.date()  # Приводим к типу date, если это datetime
                 today = datetime.now().date()  # Приводим текущую дату и время к типу date
                 days_left = (end_date - today).days
-                if days_left == 7 and not sql.notification_sent_today(user_id):
+                if days_left == 7 and not await sql.notification_sent_today(user_id):
                     await bot.send_message(chat_id=user_id, text=lexicon['push_7'], reply_markup=keyboard_tariff())
                     await sql.mark_notification_as_sent(user_id)
                     sent_count_7 += 1
-                elif days_left == 3 and not sql.notification_sent_today(user_id):
+                elif days_left == 3 and not await sql.notification_sent_today(user_id):
                     await bot.send_message(chat_id=user_id, text=lexicon['push_3'], reply_markup=keyboard_tariff())
                     await sql.mark_notification_as_sent(user_id)
                     sent_count_3 += 1
-                elif days_left == 1 and not sql.notification_sent_today(user_id):
+                elif days_left == 1 and not await sql.notification_sent_today(user_id):
                     await bot.send_message(chat_id=user_id, text=lexicon['push_1'], reply_markup=keyboard_tariff())
                     await sql.mark_notification_as_sent(user_id)
                     sent_count_1 += 1
-                elif days_left == 0 and not sql.notification_sent_today(user_id):
+                elif days_left == 0 and not await sql.notification_sent_today(user_id):
                     await bot.send_message(chat_id=user_id, text=lexicon['push_0'], reply_markup=keyboard_tariff())
                     await sql.mark_notification_as_sent(user_id)
                     sent_count_0 += 1

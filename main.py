@@ -38,7 +38,7 @@ async def main() -> None:
 
     # Запуск шедулера
     scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
-    scheduler.add_job(send_message_cron, trigger='interval', minutes=60, args=[bot], misfire_grace_time=60)
+    scheduler.add_job(send_message_cron, trigger='interval', hours=3, args=[bot], misfire_grace_time=60)
     scheduler.add_job(check_connect, trigger='interval', minutes=14, misfire_grace_time=60)
     scheduler.add_job(check_platega, trigger='interval', minutes=1, misfire_grace_time=10)
     scheduler.add_job(check_cryptobot_payments, trigger='interval', minutes=1, misfire_grace_time=10)
