@@ -68,7 +68,7 @@ async def process_confirmed_payment(payload):
 
         else:
             # Обработка обычного платежа (не подарок)
-            await x3.test_connect()
+            # await x3.test_connect()
             user_id_str = str(user_id)
             if white_flag:
                 user_id_str += '_white'
@@ -119,7 +119,7 @@ async def process_confirmed_payment(payload):
                                 if ref_is_pay_null:
                                     logger.info(f"🎁 Начисляем 7 дней рефереру {ref_id} за приглашение")
 
-                                    await x3.test_connect()
+                                    # await x3.test_connect()
                                     ref_existing = await x3.get_user_by_username(str(ref_id))
 
                                     if ref_existing and 'response' in ref_existing and ref_existing['response']:

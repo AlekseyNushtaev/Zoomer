@@ -15,14 +15,12 @@ from aiogram.types import Message, CallbackQuery, ChatMemberUpdated
 from aiogram.filters import ChatMemberUpdatedFilter, KICKED, MEMBER, Command
 from lexicon import lexicon, dct_price, dct_desc
 
-
 router: Router = Router()
 
 
 # Этот хэндлер срабатывает на команду /start
 @router.message(Command(commands="start"))
 async def process_start_command(message: Message, command: Command):
-
     user_data = await sql.SELECT_ID(message.from_user.id)
     has_paid_subscription = False
     in_chanel = False
@@ -45,7 +43,8 @@ async def process_start_command(message: Message, command: Command):
     else:
         if 'ref' in message.text:
             if user_data:
-                logger.info(f'Юзер {message.from_user.id} - {message.from_user.username} нажал старт повторно с реферальной ссылкой')
+                logger.info(
+                    f'Юзер {message.from_user.id} - {message.from_user.username} нажал старт повторно с реферальной ссылкой')
             else:
                 logger.success(
                     f'Юзер {message.from_user.id} - {message.from_user.username} зашел в бота в первый раз по реферальной ссылкой')
@@ -60,7 +59,8 @@ async def process_start_command(message: Message, command: Command):
             existing = True
         elif 'ttclid_' in message.text:
             if user_data:
-                logger.info(f'Юзер {message.from_user.id} - {message.from_user.username} нажал старт повторно с меткой ttclid')
+                logger.info(
+                    f'Юзер {message.from_user.id} - {message.from_user.username} нажал старт повторно с меткой ttclid')
             else:
                 logger.success(
                     f'Юзер {message.from_user.id} - {message.from_user.username} зашел в бота в первый раз по метке ttclid')
@@ -254,7 +254,7 @@ async def process_payment_sbp(callback: CallbackQuery):
                 reply_markup=keyboard_payment_sbp("💳 Оплатить через СБП", payment_info['url'])
             )
             logger.info(f"Юзер {user_id} создал счет на оплату {'подарка' if gift_flag else ''} {rub_amount} руб")
-            
+
         except Exception as e:
             error_message = f"Ошибка при создании счета: {str(e)}"
             logger.error(error_message)
@@ -341,7 +341,8 @@ async def process_gift_payment_method(callback: CallbackQuery):
     if 'white' in callback.data:
         await sql.add_white_counter_if_not_exists(callback.from_user.id)
     tariff = callback.data
-    await callback.message.answer('Выберите метод оплаты подарочной подписки:', reply_markup=keyboard_payment_method(tariff))
+    await callback.message.answer('Выберите метод оплаты подарочной подписки:',
+                                  reply_markup=keyboard_payment_method(tariff))
 
 
 async def activate_gift(message: Message, gift_id: str):
@@ -366,7 +367,6 @@ async def activate_gift(message: Message, gift_id: str):
     user_id_str = str(message.from_user.id)
     if white_flag:
         user_id_str += '_white'
-
 
     # Проверяем существует ли пользователь
     existing_user = await x3.get_user_by_username(user_id_str)
@@ -437,4 +437,5 @@ async def user_unblocked_bot(event: ChatMemberUpdated):
 @router.callback_query(F.data == 'r_120')
 async def process_payment_method_bonus(callback: CallbackQuery):
     tariff = callback.data
-    await callback.message.answer('Выберите метод оплаты акционной подписки:', reply_markup=keyboard_payment_method_stock(tariff))
+    await callback.message.answer('Выберите метод оплаты акционной подписки:',
+                                  reply_markup=keyboard_payment_method_stock(tariff))
