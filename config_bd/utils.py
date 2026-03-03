@@ -260,6 +260,21 @@ class AsyncSQL:
             result = await session.execute(stmt)
             return [row[0] for row in result.all()]
 
+    async def SELECT_SUBSCRIBED_NOT_IN_PANEL(self) -> List[int]:
+        """
+        Возвращает список user_id, у которых is_tarif=True, is_delete=False,
+        и нет ни одной успешной оплаты (статус 'confirmed' в Payments или PaymentsStars,
+        или статус 'paid' в PaymentsCryptobot).
+        """
+        async with self.session_factory() as session:
+            # Подзапрос: все пользователи с успешными платежами
+            stmt = select(Users.user_id).where(
+                Users.is_pay_null == True,
+                Users.subscription_end_date == None
+            )
+            result = await session.execute(stmt)
+            return [row[0] for row in result.all()]
+
     async def SELECT_USERS_BY_PARAMETER(self, parameter: str, value: str) -> List[int]:
         """
         Возвращает список user_id, у которых значение указанного параметра равно value.

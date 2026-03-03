@@ -313,3 +313,23 @@ async def force_check_connect_command(message: Message):
     except Exception as e:
         logger.error(f"Ошибка при выполнении force_check_connect: {e}")
         await message.answer(f"❌ Произошла ошибка: {e}")
+
+
+@router.message(Command(commands=['sync_panel']))
+async def sync_panel(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    await message.answer("🔄 Запускаю синхронизацию пользователей...")
+    users_panel = await x3.get_all_users()
+    users_for_sync = await sql.SELECT_SUBSCRIBED_NOT_IN_PANEL()
+    cnt_not_in_panel = 0
+    for user in users_panel:
+        try:
+            tg_id = int(user.get('username'))
+        except:
+            tg_id = 0
+        if tg_id in users_for_sync:
+            pprint(user)
+        else:
+            cnt_not_in_panel += 1
+    print(cnt_not_in_panel)
