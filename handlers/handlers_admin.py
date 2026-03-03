@@ -391,10 +391,11 @@ async def sync_panel(message: Message):
 
     # 1. Получаем всех пользователей из панели и строим словарь {telegramId: user_data}
     users_panel = await x3.get_all_users()
-    cnt = 0
     for user in users_panel:
         panel_id = user.get('id')
-        if panel_id in range(43762, 44376):
-            cnt += 1
-    await message.answer(f'{cnt}')
+        if panel_id in range(43762, 44377):
+            user_id_str = user.get('username')
+            user_id = int(user_id_str)
+            await x3.updateClient(5, user_id_str, user_id)
+    await message.answer("🔄 Обновление закончено")
 
