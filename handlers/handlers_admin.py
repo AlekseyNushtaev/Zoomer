@@ -1,8 +1,7 @@
 import random
 from datetime import datetime
-from pprint import pprint
 
-from bot import sql, x3, bot
+from bot import sql, x3
 from config import ADMIN_IDS
 from logging_config import logger
 import asyncio
@@ -381,4 +380,21 @@ async def sync_panel(message: Message):
     )
     await message.answer(report)
     logger.info(report)
+
+
+@router.message(Command(commands=['update_not_in_panel']))
+async def sync_panel(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    await message.answer("🔄 Запускаю обновление пользователей...")
+
+    # 1. Получаем всех пользователей из панели и строим словарь {telegramId: user_data}
+    users_panel = await x3.get_all_users()
+    cnt = 0
+    for user in users_panel:
+        panel_id = user.get('id')
+        if panel_id in range(43762, 44376):
+            cnt += 1
+    await message.answer(f'{cnt}')
 
