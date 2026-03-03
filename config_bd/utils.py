@@ -270,7 +270,8 @@ class AsyncSQL:
             # Подзапрос: все пользователи с успешными платежами
             stmt = select(Users.user_id).where(
                 Users.is_pay_null == True,
-                Users.subscription_end_date == None
+                Users.subscription_end_date == None,
+                Users.is_delete == False
             )
             result = await session.execute(stmt)
             return [row[0] for row in result.all()]

@@ -2,7 +2,7 @@ import random
 from datetime import datetime
 from pprint import pprint
 
-from bot import sql, x3
+from bot import sql, x3, bot
 from config import ADMIN_IDS
 from logging_config import logger
 import asyncio
@@ -319,17 +319,66 @@ async def force_check_connect_command(message: Message):
 async def sync_panel(message: Message):
     if message.from_user.id not in ADMIN_IDS:
         return
+
     await message.answer("🔄 Запускаю синхронизацию пользователей...")
+
+    # 1. Получаем всех пользователей из панели и строим словарь {telegramId: user_data}
     users_panel = await x3.get_all_users()
-    users_for_sync = await sql.SELECT_SUBSCRIBED_NOT_IN_PANEL()
-    cnt_not_in_panel = 0
+    panel_dict = {}
     for user in users_panel:
-        try:
-            tg_id = int(user.get('username'))
-        except:
-            tg_id = 0
-        if tg_id in users_for_sync:
-            pprint(user)
+        tg_id = user.get('telegramId')
+        if tg_id is not None:
+            panel_dict[tg_id] = user
+
+    # 2. Получаем список пользователей, у которых is_pay_null=True и subscription_end_date=None
+    users_for_sync = await sql.SELECT_SUBSCRIBED_NOT_IN_PANEL()
+
+    # 3. Статистика
+    updated = 0          # обновлено дат в БД
+    added_to_panel = 0   # добавлено в панель
+    not_found = 0        # не найдено в панели (остались в списке)
+
+    # 4. Обрабатываем каждого пользователя из списка на синхронизацию
+    for user_id in users_for_sync:
+        # Проверяем, есть ли пользователь в панели
+        if user_id in panel_dict:
+            user_data = panel_dict[user_id]
+
+            # Получаем expireAt и преобразуем в datetime
+            expire_str = user_data.get('expireAt')
+            if expire_str:
+                try:
+                    # Убираем 'Z' и добавляем временную зону UTC
+                    expire_dt = datetime.fromisoformat(expire_str.replace('Z', '+00:00'))
+                except Exception as e:
+                    logger.error(f"Ошибка парсинга expireAt для {user_id}: {e}")
+                    continue
+
+                await sql.update_subscription_end_date(user_id, expire_dt)
+                updated += 1
+                logger.info(f"Обновлена дата для {user_id} до {expire_dt}")
         else:
-            cnt_not_in_panel += 1
-    print(cnt_not_in_panel)
+            # Пользователя нет в панели – добавляем его с нулевым сроком
+            # Используем стандартный addClient с day=0 (подписка сразу истекает)
+            user_id_str = str(user_id)
+            # Пытаемся добавить как обычного (без _white)
+            result = await x3.addClient(0, user_id_str, user_id)
+            if result:
+                added_to_panel += 1
+                logger.info(f"Добавлен в панель пользователь {user_id} (day=0)")
+            else:
+                not_found += 1
+                logger.warning(f"Не удалось добавить в панель пользователя {user_id}")
+
+    # 5. Итоговый отчёт
+    report = (
+        f"✅ Синхронизация завершена.\n"
+        f"📊 Всего в панели: {len(users_panel)}\n"
+        f"📋 Ожидало синхронизации: {len(users_for_sync)}\n"
+        f"🔄 Обновлено дат в БД: {updated}\n"
+        f"➕ Добавлено в панель (day=0): {added_to_panel}\n"
+        f"❌ Не удалось добавить (ошибки): {not_found}"
+    )
+    await message.answer(report)
+    logger.info(report)
+
