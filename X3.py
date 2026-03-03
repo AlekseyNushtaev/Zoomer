@@ -337,7 +337,9 @@ class X3:
             users = await self.get_user_by_username(user_id)
             if users and 'response' in users and users['response']:
                 user = users['response']
-                return user.get('subscriptionUrl', '')
+                true_sublink = user.get('subscriptionUrl', '')
+                mirror_sublink = true_sublink.replace('access.zoomervpn.ru', 'zoomer.run')
+                return mirror_sublink
         except Exception as e:
             logger.error(f"Ошибка при получении ссылки для {user_id}: {e}")
         return ""

@@ -276,6 +276,17 @@ class AsyncSQL:
             result = await session.execute(stmt)
             return [row[0] for row in result.all()]
 
+    async def SELECT_SUBSCRIBED(self) -> List[int]:
+        async with self.session_factory() as session:
+            # Подзапрос: все пользователи с успешными платежами
+            stmt = select(Users.user_id).where(
+                Users.is_pay_null == True,
+                Users.subscription_end_date != None,
+                Users.is_delete == False
+            )
+            result = await session.execute(stmt)
+            return [row[0] for row in result.all()]
+
     async def SELECT_USERS_BY_PARAMETER(self, parameter: str, value: str) -> List[int]:
         """
         Возвращает список user_id, у которых значение указанного параметра равно value.
@@ -363,6 +374,7 @@ class AsyncSQL:
             'connected_subscribe_yes',
             'not_subscribed',
             'connected_never_paid',
+            'subscribed_all',
             'all_users'
         ]
 

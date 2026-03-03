@@ -380,22 +380,3 @@ async def sync_panel(message: Message):
     )
     await message.answer(report)
     logger.info(report)
-
-
-@router.message(Command(commands=['update_not_in_panel']))
-async def sync_panel(message: Message):
-    if message.from_user.id not in ADMIN_IDS:
-        return
-
-    await message.answer("🔄 Запускаю обновление пользователей...")
-
-    # 1. Получаем всех пользователей из панели и строим словарь {telegramId: user_data}
-    users_panel = await x3.get_all_users()
-    for user in users_panel:
-        panel_id = user.get('id')
-        if panel_id in range(43762, 44377):
-            user_id_str = user.get('username')
-            user_id = int(user_id_str)
-            await x3.updateClient(5, user_id_str, user_id)
-    await message.answer("🔄 Обновление закончено")
-

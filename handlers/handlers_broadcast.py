@@ -111,6 +111,8 @@ async def confirm_broadcast(message: Message, state: FSMContext):
         user_ids = await sql.SELECT_NOT_SUBSCRIBED()
     elif selected_parameter == 'connected_never_paid':
         user_ids = await sql.SELECT_CONNECTED_NEVER_PAID()
+    elif selected_parameter == 'subscribed_all':
+        user_ids = await sql.SELECT_SUBSCRIBED()
 
     if not user_ids:
         await message.answer("Нет пользователей, соответствующих выбранному параметру и значению.")
@@ -166,6 +168,9 @@ async def broadcast_confirm_send(callback: CallbackQuery, state: FSMContext, bot
     elif selected_parameter == 'connected_never_paid':
         user_ids = await sql.SELECT_CONNECTED_NEVER_PAID()
         keyboard_broadcast = create_kb(1, r_120='🔥 Акция: 120 дней - 269 руб')
+    elif selected_parameter == 'subscribed_all':
+        user_ids = await sql.SELECT_SUBSCRIBED()
+        keyboard_broadcast = create_kb(1, connect_vpn='🔗 Подключить VPN')
 
     # Проверяем, есть ли пользователи для отправки
     if not user_ids:
