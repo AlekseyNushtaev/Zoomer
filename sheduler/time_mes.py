@@ -51,8 +51,8 @@ async def send_message_cron(bot: Bot):
                     if last_notification_date:
                         if isinstance(last_notification_date, datetime):
                             last_notification_date = last_notification_date.date()  # Приводим к типу date
-                    # Проверяем, прошло ли 7 дней с момента последнего уведомления
-                    if not last_notification_date or (today - last_notification_date).days >= 7:
+                    # Проверяем, прошло ли 3 дня с момента последнего уведомления
+                    if not last_notification_date or (today - last_notification_date).days >= 3:
                         await bot.send_message(chat_id=user_id, text=lexicon['push_off'], reply_markup=keyboard_tariff())
                         await asyncio.sleep(0.05)
                         await sql.mark_notification_as_sent(user_id)

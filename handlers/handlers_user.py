@@ -181,9 +181,12 @@ async def buy_vpn_cb(callback: CallbackQuery):
 async def direct_connect_vpn_cb(callback: CallbackQuery):
     # await x3.test_connect()
     user_id = str(callback.from_user.id)
-    user_id_white = user_id + '_white'
     sub_url = await x3.sublink(user_id)
-    sub_url_white = await x3.sublink(user_id_white)
+    sub_url_white = None
+    user_data = await sql.SELECT_ID(callback.from_user.id)
+    if user_data[10]:
+        user_id_white = user_id + '_white'
+        sub_url_white = await x3.sublink(user_id_white)
 
     if not sub_url and not sub_url_white:
         await callback.message.answer(lexicon['no_sub'])
