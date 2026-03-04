@@ -17,7 +17,7 @@ async def process_confirmed_payment(payload):
         white_flag = payload_parts.get('white', 'False') == 'True'
         is_gift = payload_parts.get('gift', 'False') == 'True'
         method = payload_parts.get('method', '')
-        if method in ('sbp', 'stars'):
+        if method in ('sbp', 'stars', 'card'):
             amount = int(payload_parts.get('amount', 0))
         else:
             amount = float(payload_parts.get('amount', 0.0))
@@ -27,15 +27,13 @@ async def process_confirmed_payment(payload):
             f"gift={is_gift}, method={method}, amount={amount}")
 
         # Определяем валюту для сообщения
-        if method == 'sbp':
+        if method in ['sbp', 'card']:
             currency = 'руб'
         elif method == 'stars':
             currency = '⭐️'
-            # Записываем платёж Stars
             await sql.add_payment_stars(user_id, amount, is_gift)
         elif method in ('ton', 'usdt'):
             currency = method.upper()
-            # Платежи крипто уже записаны в payments_cryptobot при создании счета, здесь только обработка
         else:
             currency = ''
 

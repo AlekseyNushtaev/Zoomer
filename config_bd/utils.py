@@ -4,7 +4,8 @@ from sqlalchemy import select, update, func
 from datetime import datetime, date
 from typing import Optional, List, Tuple, Dict
 
-from config_bd.models import AsyncSessionLocal, Users, Payments, Gifts, PaymentsCryptobot, PaymentsStars, Online, WhiteCounter
+from config_bd.models import AsyncSessionLocal, Users, Payments, Gifts, PaymentsCryptobot, PaymentsStars, Online, \
+    WhiteCounter, PaymentsCards
 from logging_config import logger
 
 
@@ -253,6 +254,8 @@ class AsyncSQL:
             stmt = select(Users.user_id).where(
                 Users.is_tarif == True,
                 Users.is_delete == False,
+                (Users.last_broadcast_date.is_(None)) |
+                (func.date(Users.last_broadcast_date) != today),
                 Users.user_id.notin_(paid_subq)
             )
             result = await session.execute(stmt)
@@ -520,10 +523,24 @@ class AsyncSQL:
             result = await session.execute(stmt)
             return result.scalars().all()
 
+    async def get_pending_platega_card_payments(self) -> List[PaymentsCards]:
+        """Возвращает все платежи из таблицы payments со статусом 'pending'."""
+        async with self.session_factory() as session:
+            stmt = select(PaymentsCards).where(PaymentsCards.status == 'pending')
+            result = await session.execute(stmt)
+            return result.scalars().all()
+
     async def update_payment_status(self, transaction_id: str, new_status: str) -> None:
         """Обновляет статус платежа по transaction_id."""
         async with self.session_factory() as session:
             stmt = update(Payments).where(Payments.transaction_id == transaction_id).values(status=new_status)
+            await session.execute(stmt)
+            await session.commit()
+
+    async def update_payment_card_status(self, transaction_id: str, new_status: str) -> None:
+        """Обновляет статус платежа по transaction_id."""
+        async with self.session_factory() as session:
+            stmt = update(PaymentsCards).where(PaymentsCards.transaction_id == transaction_id).values(status=new_status)
             await session.execute(stmt)
             await session.commit()
 
@@ -615,28 +632,34 @@ class AsyncSQL:
             session.add(payment)
             try:
                 await session.commit()
-                logger.success(f"💰 Платёж Platega записан: user_id={user_id}, amount={amount}, is_gift={is_gift}")
+                logger.success(f"💰 Платёж Platega SBP записан: user_id={user_id}, amount={amount}, is_gift={is_gift}")
             except Exception as e:
                 await session.rollback()
                 logger.error(f"❌ Ошибка записи платежа Platega: {e}")
                 raise
 
-    async def add_payment(self, user_id: int, amount: int, status: str, transaction_id: str,
-                          is_gift: bool = False) -> None:
+    async def add_platega_card_payment(self, user_id: int, amount: int, status: str, transaction_id: str, payload: str,
+                                       is_gift: bool = False) -> None:
         """
-        Запись платежа Platega в таблицу payments.
+        Записывает платёж PlategaCard в таблицу payments.
         """
         async with self.session_factory() as session:
-            payment = Payments(
+            payment = PaymentsCards(
                 user_id=user_id,
                 amount=amount,
-                is_gift=is_gift,
                 status=status,
-                transaction_id=transaction_id
+                transaction_id=transaction_id,
+                payload=payload,
+                is_gift=is_gift
             )
             session.add(payment)
-            await session.commit()
-            logger.success(f"💰 Платёж Platega записан: user_id={user_id}, amount={amount}, is_gift={is_gift}")
+            try:
+                await session.commit()
+                logger.success(f"💰 Платёж Platega Card записан: user_id={user_id}, amount={amount}, is_gift={is_gift}")
+            except Exception as e:
+                await session.rollback()
+                logger.error(f"❌ Ошибка записи платежа Platega: {e}")
+                raise
 
     async def add_cryptobot_payment(self, user_id: int, amount: float, currency: str, is_gift: bool, invoice_id: str,
                                     payload: str) -> None:

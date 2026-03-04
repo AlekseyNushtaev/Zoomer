@@ -15,16 +15,15 @@ async def check_online_daily():
         # 2. Фильтруем тех, кто был онлайн сегодня
         active_telegram_ids = []
         for user in users_x3:
-            last_node = user.get('lastConnectedNode')
-            if last_node and last_node.get('connectedAt'):
-                connected_str = last_node['connectedAt']
+            if user['userTraffic']['firstConnectedAt']:
+                connected_str = user['userTraffic']['onlineAt']
                 try:
                     connected_dt = datetime.fromisoformat(connected_str.replace('Z', '+00:00'))
                     connected_date = connected_dt.date()
                     if connected_date == datetime.now().date():
                         telegram_id = user.get('telegramId')
                         if telegram_id is not None:
-                            active_telegram_ids.append(telegram_id)
+                            active_telegram_ids.append(int(telegram_id))
                 except (ValueError, TypeError):
                     continue
         users_active = len(active_telegram_ids)

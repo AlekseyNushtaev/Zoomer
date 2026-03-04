@@ -130,9 +130,11 @@ def keyboard_payment_cancel():
     ])
     return keyboard
 
+
 def keyboard_payment_method(tarif):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💳 СБП", callback_data=f"sbp_{tarif}")],
+        [InlineKeyboardButton(text="⚡ СБП", callback_data=f"sbp_{tarif}")],
+        [InlineKeyboardButton(text="💳 Карта банка", callback_data=f"card_{tarif}")],
         [InlineKeyboardButton(text="⭐️ Telegram Stars", callback_data=f"stars_{tarif}")],
         [InlineKeyboardButton(text="💎 TON", callback_data=f"crypto_ton_{tarif}")],
         [InlineKeyboardButton(text="💵 USDT", callback_data=f"crypto_usdt_{tarif}")],
@@ -142,7 +144,8 @@ def keyboard_payment_method(tarif):
 
 def keyboard_payment_method_stock(tarif):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💳 СБП", callback_data=f"sbp_{tarif}")],
+        [InlineKeyboardButton(text="⚡ СБП", callback_data=f"sbp_{tarif}")],
+        [InlineKeyboardButton(text="💳 Карта банка", callback_data=f"card_{tarif}")],
         [InlineKeyboardButton(text="⭐️ Telegram Stars", callback_data=f"stars_{tarif}")],
         [InlineKeyboardButton(text="💎 TON", callback_data=f"crypto_ton_{tarif}")],
         [InlineKeyboardButton(text="💵 USDT", callback_data=f"crypto_usdt_{tarif}")],

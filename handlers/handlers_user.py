@@ -3,17 +3,16 @@ import time
 import requests
 
 from bot import sql, bot, x3
-from config import CHANEL_ID, ADMIN_IDS
-from keyboard import keyboard_start, keyboard_start_bonus, keyboard_tariff_bonus, keyboard_tariff, \
-    keyboard_subscription, ref_keyboard, keyboard_gift_tariff, check_keyboard, create_kb, \
-    keyboard_payment_method, keyboard_payment_sbp, keyboard_payment_method_stock
+from config import CHANEL_ID
+from keyboard import (keyboard_start, keyboard_start_bonus, keyboard_tariff_bonus, keyboard_tariff,
+                      keyboard_subscription, ref_keyboard, keyboard_gift_tariff, check_keyboard,
+                      keyboard_payment_method, keyboard_payment_method_stock)
 from logging_config import logger
-from payments import pay_platega
 import asyncio
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, ChatMemberUpdated
 from aiogram.filters import ChatMemberUpdatedFilter, KICKED, MEMBER, Command
-from lexicon import lexicon, dct_price, dct_desc
+from lexicon import lexicon
 
 
 router: Router = Router()
@@ -207,61 +206,6 @@ async def process_payment_method(callback: CallbackQuery):
         await sql.add_white_counter_if_not_exists(callback.from_user.id)
     tariff = callback.data
     await callback.message.answer('Выберите метод оплаты:', reply_markup=keyboard_payment_method(tariff))
-
-
-@router.callback_query(F.data.startswith('sbp_'))
-async def process_payment_sbp(callback: CallbackQuery):
-    await callback.answer()
-    gift_flag = False
-    white_flag = False
-    if 'gift_' in callback.data:
-        gift_flag = True
-    duration = callback.data.replace('sbp_r_', '').replace('sbp_gift_r_', '')
-    desc_key = duration
-
-    rub_amount = dct_price[duration]
-    if callback.from_user.id in ADMIN_IDS:
-        rub_amount = 1
-    user_id = str(callback.from_user.id)
-
-    if 'white' in duration:
-        duration = duration.replace('white_', '')
-        white_flag = True
-
-    if gift_flag:
-        payment_info = await pay_platega.pay_for_gift(
-            val=str(rub_amount),
-            des=f"Подписка в подарок {dct_desc[desc_key]}",
-            user_id=user_id,
-            duration=duration,
-            white=white_flag,
-            payment_method=2,  # 2 = СБП QR
-        )
-    else:
-        payment_info = await pay_platega.pay(
-            val=str(rub_amount),
-            des=dct_desc[desc_key],
-            user_id=user_id,
-            duration=duration,
-            white=white_flag,
-            payment_method=2  # 2 = СБП QR
-        )
-
-    if payment_info['status'] == 'pending':
-        try:
-            text = lexicon['payment_link']
-            if white_flag:
-                text = lexicon['payment_link_white']
-            await callback.message.edit_text(
-                text=text,
-                reply_markup=keyboard_payment_sbp("💳 Оплатить через СБП", payment_info['url'])
-            )
-            logger.info(f"Юзер {user_id} создал счет на оплату {'подарка' if gift_flag else ''} {rub_amount} руб")
-            
-        except Exception as e:
-            error_message = f"Ошибка при создании счета: {str(e)}"
-            logger.error(error_message)
-            await callback.message.answer(lexicon['error_payment'], reply_markup=create_kb(1, back_to_main='🔙 Назад'))
 
 
 @router.callback_query(F.data == 'free_vpn')

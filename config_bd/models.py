@@ -31,6 +31,7 @@ class Users(Base):
     stamp = Column('stamp', String(100), nullable=False)
     ttclid = Column('ttclid', String(100), nullable=True)
 
+
 class Gifts(Base):
     __tablename__ = 'gifts'
 
@@ -40,6 +41,7 @@ class Gifts(Base):
     recepient_id = Column(BigInteger, nullable=True)
     white_flag = Column(Boolean, default=False)
     flag = Column(Boolean, default=False)
+
 
 class Payments(Base):
     __tablename__ = 'payments'
@@ -52,6 +54,20 @@ class Payments(Base):
     status = Column(String, nullable=True)
     transaction_id = Column(String, nullable=True)
 
+
+class PaymentsCards(Base):
+    __tablename__ = 'payments_cards'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, nullable=False)
+    amount = Column(Integer, nullable=False)
+    time_created = Column(DateTime, default=datetime.now)
+    is_gift = Column(Boolean, default=False)
+    status = Column(String, nullable=True)
+    transaction_id = Column(String, nullable=True)
+    payload = Column(String, nullable=True)
+
+
 class PaymentsStars(Base):
     __tablename__ = 'payments_stars'
 
@@ -61,6 +77,7 @@ class PaymentsStars(Base):
     time_created = Column(DateTime, default=datetime.now)
     is_gift = Column(Boolean, default=False)
     status = Column(String, default='confirmed')
+
 
 class PaymentsCryptobot(Base):
     __tablename__ = 'payments_cryptobot'
@@ -75,12 +92,14 @@ class PaymentsCryptobot(Base):
     invoice_id = Column(String, nullable=True)
     payload = Column(String, nullable=True)
 
+
 class WhiteCounter(Base):
     __tablename__ = 'white_counter'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, nullable=False)
     time_created = Column(DateTime, default=datetime.now)
+
 
 class Online(Base):
     __tablename__ = 'online'
