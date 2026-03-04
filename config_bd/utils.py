@@ -692,6 +692,12 @@ class AsyncSQL:
             result = await session.execute(select(Payments))
             return result.scalars().all()
 
+    async def get_all_payments_cards(self) -> List[PaymentsCards]:
+        """Возвращает список всех платежей по картам (PaymentsCards)."""
+        async with self.session_factory() as session:
+            result = await session.execute(select(PaymentsCards))
+            return result.scalars().all()
+
     async def get_all_payments_stars(self) -> List[PaymentsStars]:
         """Возвращает список всех платежей Telegram Stars."""
         async with self.session_factory() as session:
