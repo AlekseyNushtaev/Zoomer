@@ -1,8 +1,9 @@
 import random
 from datetime import datetime
 
-from bot import sql, x3
+from bot import sql, x3, bot
 from config import ADMIN_IDS
+from keyboard import create_kb
 from logging_config import logger
 import asyncio
 from aiogram import Router, F
@@ -361,10 +362,14 @@ async def sync_panel(message: Message):
             # Используем стандартный addClient с day=0 (подписка сразу истекает)
             user_id_str = str(user_id)
             # Пытаемся добавить как обычного (без _white)
-            result = await x3.addClient(0, user_id_str, user_id)
+            result = await x3.addClient(5, user_id_str, user_id)
             if result:
                 added_to_panel += 1
-                logger.info(f"Добавлен в панель пользователь {user_id} (day=0)")
+                logger.info(f"Добавлен в панель пользователь {user_id} (day=5)")
+                await bot.send_message(user_id,
+                                       'Добрый день. Мы создали Вам личный кабинет и начислили 5 дней пробного '
+                                       'доступа.\nПерейдите по ссылке, нажав на кнопку 🔗 Подключить VPN',
+                                       reply_markup=create_kb(1, connect_vpn='🔗 Подключить VPN'))
             else:
                 not_found += 1
                 logger.warning(f"Не удалось добавить в панель пользователя {user_id}")
