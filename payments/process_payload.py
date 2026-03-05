@@ -1,7 +1,6 @@
 from datetime import datetime
 
-from bot import x3, sql
-from handlers.handlers_user import bot
+from bot import x3, sql, bot
 
 from keyboard import create_kb, keyboard_sub_after_buy
 from lexicon import lexicon

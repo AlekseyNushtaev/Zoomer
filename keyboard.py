@@ -37,19 +37,13 @@ def create_kb(width: int,
     return kb_builder.as_markup()
 
 
-def check_keyboard():
+def chanel_keyboard():
     # Создаем клавиатуру с инлайн-кнопками
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
                 text="Подписаться на канал",
                 url="https://t.me/+C3B1C6zruYc4M2Ey"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="Проверить подписку",
-                callback_data="check_channel"
             )
         ]
     ])

@@ -55,9 +55,9 @@ class AsyncSQL:
             await session.execute(stmt)
             await session.commit()
 
-    async def UPDATE_ADMIN(self, user_id: int):
+    async def UPDATE_ADMIN(self, user_id: int, booly: bool):
         async with self.session_factory() as session:
-            stmt = update(Users).where(Users.user_id == user_id).values(is_admin=True)
+            stmt = update(Users).where(Users.user_id == user_id).values(is_admin=booly)
             await session.execute(stmt)
             await session.commit()
 
