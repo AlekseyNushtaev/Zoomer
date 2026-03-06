@@ -155,7 +155,24 @@ class AsyncSQL:
 
     async def SELECT_ALL_USERS(self) -> List[int]:
         async with self.session_factory() as session:
-            stmt = select(Users.user_id).where(Users.is_delete == False)
+            today = datetime.now().date()
+            paid_subq = (
+                select(Payments.user_id)
+                .where(Payments.status == 'confirmed')
+                .union(
+                    select(PaymentsStars.user_id).where(PaymentsStars.status == 'confirmed'),
+                    select(PaymentsCryptobot.user_id).where(PaymentsCryptobot.status == 'paid'),
+                    select(PaymentsCards.user_id).where(PaymentsCards.status == 'confirmed'),
+                    select(PaymentsPlategaCrypto.user_id).where(PaymentsPlategaCrypto.status == 'confirmed')
+                )
+                .subquery()
+            )
+            stmt = select(Users.user_id).where(
+                Users.is_delete == False,
+                (Users.last_broadcast_date.is_(None)) |
+                (func.date(Users.last_broadcast_date) != today),
+                Users.user_id.notin_(paid_subq)
+            )
             result = await session.execute(stmt)
             return [row[0] for row in result.all()]
 
@@ -247,7 +264,9 @@ class AsyncSQL:
                 .where(Payments.status == 'confirmed')
                 .union(
                     select(PaymentsStars.user_id).where(PaymentsStars.status == 'confirmed'),
-                    select(PaymentsCryptobot.user_id).where(PaymentsCryptobot.status == 'paid')
+                    select(PaymentsCryptobot.user_id).where(PaymentsCryptobot.status == 'paid'),
+                    select(PaymentsCards.user_id).where(PaymentsCards.status == 'confirmed'),
+                    select(PaymentsPlategaCrypto.user_id).where(PaymentsPlategaCrypto.status == 'confirmed')
                 )
                 .subquery()
             )
@@ -322,7 +341,7 @@ class AsyncSQL:
             logger.info(f"Query result for parameter '{parameter}' with value '{value}': {len(rows)}")
             return [row[0] for row in rows]
 
-    async def get_stat_by_ref_or_stamp(self, arg: str) -> Tuple[Optional[int], Optional[int], Optional[int], Optional[int], Optional[str]]:
+    async def get_stat_by_ref_or_stamp(self, arg: str) -> Tuple[Optional[int], Optional[int], Optional[int], Optional[int], Optional[int], Optional[str]]:
         """
         Возвращает статистику по пользователям, у которых Ref == arg,
         если таких нет – по пользователям с stamp == arg.
@@ -338,11 +357,12 @@ class AsyncSQL:
             source = 'stamp'
 
         if not users:
-            return None, None, None, None, None
+            return None, None, None, None, None, None
 
         total = len(users)
         with_sub = 0
         with_tarif = 0
+        with_tarif_not_blocked = 0
 
         for user_id in users:
             user_data = await self.SELECT_ID(user_id)
@@ -352,6 +372,8 @@ class AsyncSQL:
                     with_sub += 1
                 if user_data[5]:  # Is_tarif
                     with_tarif += 1
+                if user_data[5] and not user_data[3]:
+                    with_tarif_not_blocked +=1
 
         # Сумма подтверждённых платежей этих пользователей
         total_payments = 0
@@ -363,8 +385,9 @@ class AsyncSQL:
                 )
                 result = await session.execute(stmt)
                 total_payments = result.scalar() or 0
+                total_payments = total_payments // 2
 
-        return total, with_sub, with_tarif, total_payments, source
+        return total, with_sub, with_tarif, with_tarif_not_blocked, total_payments, source
 
     def GET_AVAILABLE_PARAMETERS(self) -> List[str]:
         """Возвращает список доступных параметров для фильтрации пользователей."""

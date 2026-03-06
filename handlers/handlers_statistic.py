@@ -74,12 +74,12 @@ async def stat_command(message: Message):
         return
 
     arg = args[1].strip()
-    total, with_sub, with_tarif, total_payments, source = await sql.get_stat_by_ref_or_stamp(arg)
+    total, with_sub, with_tarif, with_tarif_not_blocked, total_payments, source = await sql.get_stat_by_ref_or_stamp(arg)
 
     if total is None:
         await message.answer(f"{arg} - нет совпадений")
     else:
-        await message.answer(f"{arg} {total} {with_sub} {with_tarif} {total_payments}")
+        await message.answer(f"{arg} {total} {with_sub} {with_tarif} {with_tarif_not_blocked} - {total_payments} руб")
 
 
 @router.message(Command(commands=['anal_export']))
