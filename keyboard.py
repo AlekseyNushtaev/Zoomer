@@ -130,8 +130,9 @@ def keyboard_payment_method(tarif):
         [InlineKeyboardButton(text="⚡ СБП", callback_data=f"sbp_{tarif}")],
         [InlineKeyboardButton(text="💳 Карта РФ", callback_data=f"card_{tarif}")],
         [InlineKeyboardButton(text="⭐️ Telegram Stars", callback_data=f"stars_{tarif}")],
-        [InlineKeyboardButton(text="💎 TON", callback_data=f"crypto_ton_{tarif}")],
-        [InlineKeyboardButton(text="💵 USDT", callback_data=f"crypto_usdt_{tarif}")],
+        [InlineKeyboardButton(text="💎 Криптовалюта", callback_data=f"crypto_{tarif}")],
+        # [InlineKeyboardButton(text="💎 TON", callback_data=f"crypto_ton_{tarif}")],
+        # [InlineKeyboardButton(text="💵 USDT", callback_data=f"crypto_usdt_{tarif}")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data='back_to_buy_menu')],
     ])
     return keyboard
@@ -141,8 +142,9 @@ def keyboard_payment_method_stock(tarif):
         [InlineKeyboardButton(text="⚡ СБП", callback_data=f"sbp_{tarif}")],
         [InlineKeyboardButton(text="💳 Карта РФ", callback_data=f"card_{tarif}")],
         [InlineKeyboardButton(text="⭐️ Telegram Stars", callback_data=f"stars_{tarif}")],
-        [InlineKeyboardButton(text="💎 TON", callback_data=f"crypto_ton_{tarif}")],
-        [InlineKeyboardButton(text="💵 USDT", callback_data=f"crypto_usdt_{tarif}")],
+        [InlineKeyboardButton(text="💎 Криптовалюта", callback_data=f"crypto_{tarif}")],
+        # [InlineKeyboardButton(text="💎 TON", callback_data=f"crypto_ton_{tarif}")],
+        # [InlineKeyboardButton(text="💵 USDT", callback_data=f"crypto_usdt_{tarif}")],
     ])
     return keyboard
 

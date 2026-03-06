@@ -9,6 +9,7 @@ from config import PLATEGA_API_KEY, PLATEGA_MERCHANT_ID, ADMIN_IDS
 from keyboard import keyboard_payment_sbp, create_kb
 from lexicon import dct_price, dct_desc, lexicon
 from logging_config import logger
+from payments.pay_cryptobot import get_crypto_amount
 
 router = Router()
 
@@ -96,8 +97,10 @@ async def pay(val: str, des: str, user_id: str, duration: str, white: bool, paym
     platega = PlategaPayment(PLATEGA_API_KEY, PLATEGA_MERCHANT_ID)
     if payment_method == 2:
         method = 'sbp'
-    else:
+    elif payment_method == 11:
         method = 'card'
+    else:
+        method = 'crypto'
     payload = f"user_id:{user_id},duration:{duration},white:{white},gift:False,method:{method},amount:{int(val)}"
 
     try:
@@ -111,8 +114,11 @@ async def pay(val: str, des: str, user_id: str, duration: str, white: bool, paym
         # Асинхронная запись платежа
         if payment_method == 2:
             await sql.add_platega_payment(int(user_id), int(val), result['status'], result['id'], is_gift=False)
-        else:
+        elif payment_method == 11:
             await sql.add_platega_card_payment(int(user_id), int(val), result['status'], result['id'], payload, is_gift=False)
+        else:
+            await sql.add_platega_crypto_payment(int(user_id), int(val), result['status'], result['id'], payload,
+                                               is_gift=False)
 
         logger.info(f"✅ Platega payment created (method={payment_method}): {result['status']}")
         logger.info(f"🔗 Payment URL: {result['url']}")
@@ -133,7 +139,13 @@ async def pay_for_gift(val: str, des: str, user_id: str, duration: str, white: b
     """Создание платежа для совместимости с pay_yoo.py"""
 
     platega = PlategaPayment(PLATEGA_API_KEY, PLATEGA_MERCHANT_ID)
-    payload = f"user_id:{user_id},duration:{duration},white:{white},gift:True,method:sbp,amount:{int(val)}"
+    if payment_method == 2:
+        method = 'sbp'
+    elif payment_method == 11:
+        method = 'card'
+    else:
+        method = 'crypto'
+    payload = f"user_id:{user_id},duration:{duration},white:{white},gift:True,method:{method},amount:{int(val)}"
 
     try:
         result = await platega.create_payment(
@@ -146,8 +158,10 @@ async def pay_for_gift(val: str, des: str, user_id: str, duration: str, white: b
         # Асинхронная запись платежа с флагом подарка
         if payment_method == 2:
             await sql.add_platega_payment(int(user_id), int(val), result['status'], result['id'], is_gift=True)
-        else:
+        elif payment_method == 11:
             await sql.add_platega_card_payment(int(user_id), int(val), result['status'], result['id'], payload, is_gift=True)
+        else:
+            await sql.add_platega_crypto_payment(int(user_id), int(val), result['status'], result['id'], payload, is_gift=True)
 
         logger.info(f"✅ Platega payment for gift created (method={payment_method}): {result['status']}")
         logger.info(f"🔗 Payment URL for gift: {result['url']}")
@@ -267,6 +281,67 @@ async def process_payment_card(callback: CallbackQuery):
                 reply_markup=keyboard_payment_sbp("💳 Оплатить по карте", payment_info['url'])
             )
             logger.info(f"Юзер {user_id} создал счет на оплату по карте {'подарка' if gift_flag else ''} {rub_amount} руб")
+
+        except Exception as e:
+            error_message = f"Ошибка при создании счета: {str(e)}"
+            logger.error(error_message)
+            await callback.message.answer(lexicon['error_payment'], reply_markup=create_kb(1, back_to_main='🔙 Назад'))
+
+
+@router.callback_query(F.data.startswith('crypto_'))
+async def process_payment_crypto(callback: CallbackQuery):
+    gift_flag = False
+    white_flag = False
+    data = callback.data
+    user_id = str(callback.from_user.id)
+
+    if 'gift_' in data:
+        gift_flag = True
+
+    if gift_flag:
+        duration = data.replace(f'crypto_gift_r_', '')
+    else:
+        duration = data.replace(f'crypto_r_', '')
+
+    rub_amount = dct_price[duration]
+    desc_key = duration
+
+    if 'white' in duration:
+        white_flag = True
+        duration = duration.replace('white_', '')
+
+    if callback.from_user.id in ADMIN_IDS:
+        rub_amount = 1
+
+    if gift_flag:
+        payment_info = await pay_for_gift(
+            val=str(rub_amount),
+            des=f"Подписка в подарок {dct_desc[desc_key]}",
+            user_id=user_id,
+            duration=duration,
+            white=white_flag,
+            payment_method=13,
+        )
+    else:
+        payment_info = await pay(
+            val=str(rub_amount),
+            des=dct_desc[desc_key],
+            user_id=user_id,
+            duration=duration,
+            white=white_flag,
+            payment_method=13
+        )
+
+    if payment_info['status'] == 'pending':
+        try:
+            text = lexicon['payment_link']
+            if white_flag:
+                text = lexicon['payment_link_white']
+            await callback.message.edit_text(
+                text=text,
+                reply_markup=keyboard_payment_sbp("💎 Оплатить криптовалютой", payment_info['url'])
+            )
+            logger.info(f"Юзер {user_id} создал счет на оплату криптой {'подарка' if gift_flag else ''} {rub_amount} руб")
 
         except Exception as e:
             error_message = f"Ошибка при создании счета: {str(e)}"

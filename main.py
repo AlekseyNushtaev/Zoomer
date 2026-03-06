@@ -9,7 +9,7 @@ from payments import pay_stars, pay_cryptobot, pay_platega
 from sheduler.check_connect import check_connect
 from sheduler.check_cryptobot import check_cryptobot_payments
 from sheduler.check_online import check_online_daily
-from sheduler.check_platega import check_platega, check_platega_card
+from sheduler.check_platega import check_platega, check_platega_card, check_platega_crypto
 from handlers import handlers_user, handlers_statistic, handlers_admin, handlers_broadcast, handlers_export
 from sheduler.time_mes import send_message_cron
 from logging_config import logger
@@ -35,7 +35,7 @@ async def main() -> None:
     dp.include_router(handlers_statistic.router)
     dp.include_router(pay_stars.router)
     dp.include_router(pay_platega.router)
-    dp.include_router(pay_cryptobot.router)
+    # dp.include_router(pay_cryptobot.router)
 
     # Запуск шедулера
     scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
@@ -43,7 +43,8 @@ async def main() -> None:
     scheduler.add_job(check_connect, trigger='interval', minutes=14, misfire_grace_time=60)
     scheduler.add_job(check_platega, trigger='interval', minutes=1, misfire_grace_time=10)
     scheduler.add_job(check_platega_card, trigger='interval', minutes=1, misfire_grace_time=10)
-    scheduler.add_job(check_cryptobot_payments, trigger='interval', minutes=1, misfire_grace_time=10)
+    scheduler.add_job(check_platega_crypto, trigger='interval', minutes=1, misfire_grace_time=10)
+    # scheduler.add_job(check_cryptobot_payments, trigger='interval', minutes=1, misfire_grace_time=10)
     scheduler.add_job(send_push_cron, trigger='interval', minutes=30, misfire_grace_time=60)
     scheduler.add_job(check_online_daily, 'cron', hour=2, minute=55, id='daily_online_stats', misfire_grace_time=60)
     scheduler.start()

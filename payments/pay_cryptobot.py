@@ -148,11 +148,12 @@ async def process_payment_crypto(callback: CallbackQuery):
     else:
         duration = data.replace(f'crypto_{parts[1]}_r_', '')
 
+    crypto_amount = get_crypto_amount(currency, duration)
+
     if 'white' in duration:
         white_flag = True
         duration = duration.replace('white_', '')
 
-    crypto_amount = get_crypto_amount(currency, duration)
     if not crypto_amount:
         await callback.answer("Ошибка определения цены для данной валюты", show_alert=True)
         return

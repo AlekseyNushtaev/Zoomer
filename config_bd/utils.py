@@ -5,7 +5,7 @@ from datetime import datetime, date
 from typing import Optional, List, Tuple, Dict
 
 from config_bd.models import AsyncSessionLocal, Users, Payments, Gifts, PaymentsCryptobot, PaymentsStars, Online, \
-    WhiteCounter, PaymentsCards
+    WhiteCounter, PaymentsCards, PaymentsPlategaCrypto
 from logging_config import logger
 
 
@@ -530,6 +530,13 @@ class AsyncSQL:
             result = await session.execute(stmt)
             return result.scalars().all()
 
+    async def get_pending_platega_crypto_payments(self) -> List[PaymentsPlategaCrypto]:
+        """Возвращает все платежи из таблицы payments со статусом 'pending'."""
+        async with self.session_factory() as session:
+            stmt = select(PaymentsPlategaCrypto).where(PaymentsPlategaCrypto.status == 'pending')
+            result = await session.execute(stmt)
+            return result.scalars().all()
+
     async def update_payment_status(self, transaction_id: str, new_status: str) -> None:
         """Обновляет статус платежа по transaction_id."""
         async with self.session_factory() as session:
@@ -541,6 +548,13 @@ class AsyncSQL:
         """Обновляет статус платежа по transaction_id."""
         async with self.session_factory() as session:
             stmt = update(PaymentsCards).where(PaymentsCards.transaction_id == transaction_id).values(status=new_status)
+            await session.execute(stmt)
+            await session.commit()
+
+    async def update_payment_platega_crypto_status(self, transaction_id: str, new_status: str) -> None:
+        """Обновляет статус платежа по transaction_id."""
+        async with self.session_factory() as session:
+            stmt = update(PaymentsPlategaCrypto).where(PaymentsPlategaCrypto.transaction_id == transaction_id).values(status=new_status)
             await session.execute(stmt)
             await session.commit()
 
@@ -661,6 +675,29 @@ class AsyncSQL:
                 logger.error(f"❌ Ошибка записи платежа Platega: {e}")
                 raise
 
+    async def add_platega_crypto_payment(self, user_id: int, amount: int, status: str, transaction_id: str, payload: str,
+                                       is_gift: bool = False) -> None:
+        """
+        Записывает платёж PlategaCard в таблицу payments.
+        """
+        async with self.session_factory() as session:
+            payment = PaymentsPlategaCrypto(
+                user_id=user_id,
+                amount=amount,
+                status=status,
+                transaction_id=transaction_id,
+                payload=payload,
+                is_gift=is_gift
+            )
+            session.add(payment)
+            try:
+                await session.commit()
+                logger.success(f"💰 Платёж Platega Crypto записан: user_id={user_id}, amount={amount}, is_gift={is_gift}")
+            except Exception as e:
+                await session.rollback()
+                logger.error(f"❌ Ошибка записи платежа Platega: {e}")
+                raise
+
     async def add_cryptobot_payment(self, user_id: int, amount: float, currency: str, is_gift: bool, invoice_id: str,
                                     payload: str) -> None:
         """
@@ -696,6 +733,11 @@ class AsyncSQL:
         """Возвращает список всех платежей по картам (PaymentsCards)."""
         async with self.session_factory() as session:
             result = await session.execute(select(PaymentsCards))
+            return result.scalars().all()
+
+    async def get_all_payments_platega_crypto(self) -> List[PaymentsPlategaCrypto]:
+        async with self.session_factory() as session:
+            result = await session.execute(select(PaymentsPlategaCrypto))
             return result.scalars().all()
 
     async def get_all_payments_stars(self) -> List[PaymentsStars]:
