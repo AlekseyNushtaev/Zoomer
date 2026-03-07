@@ -155,23 +155,8 @@ class AsyncSQL:
 
     async def SELECT_ALL_USERS(self) -> List[int]:
         async with self.session_factory() as session:
-            today = datetime.now().date()
-            paid_subq = (
-                select(Payments.user_id)
-                .where(Payments.status == 'confirmed')
-                .union(
-                    select(PaymentsStars.user_id).where(PaymentsStars.status == 'confirmed'),
-                    select(PaymentsCryptobot.user_id).where(PaymentsCryptobot.status == 'paid'),
-                    select(PaymentsCards.user_id).where(PaymentsCards.status == 'confirmed'),
-                    select(PaymentsPlategaCrypto.user_id).where(PaymentsPlategaCrypto.status == 'confirmed')
-                )
-                .subquery()
-            )
             stmt = select(Users.user_id).where(
-                Users.is_delete == False,
-                (Users.last_broadcast_date.is_(None)) |
-                (func.date(Users.last_broadcast_date) != today),
-                Users.user_id.notin_(paid_subq)
+                Users.is_delete == False
             )
             result = await session.execute(stmt)
             return [row[0] for row in result.all()]
