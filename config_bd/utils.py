@@ -359,6 +359,8 @@ class AsyncSQL:
                     with_tarif += 1
                 if user_data[5] and not user_data[3]:
                     with_tarif_not_blocked +=1
+        with_tarif = with_tarif // 2
+        with_tarif_not_blocked = with_tarif_not_blocked // 2
 
         # Сумма подтверждённых платежей этих пользователей
         total_payments = 0
