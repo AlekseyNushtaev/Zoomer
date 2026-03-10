@@ -1,5 +1,5 @@
 import random
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 
@@ -566,3 +566,77 @@ async def second_chance_command(message: Message):
     )
     await message.answer(report)
     logger.info(report)
+
+
+@router.message(Command(commands=['get_second']))
+async def get_second_command(message: Message):
+    """Проверяет, сколько пользователей с ttclid='second_chance_100326' были онлайн после 10.03.2026"""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    await message.answer("🔄 Получаю данные из панели и базы...")
+
+    try:
+        # 1. Получаем всех пользователей с нужным ttclid
+        async with sql.session_factory() as session:
+            stmt = select(Users.user_id).where(Users.ttclid == 'second_chance_100326')
+            result = await session.execute(stmt)
+            user_ids = [row[0] for row in result.all()]
+
+        if not user_ids:
+            await message.answer("❌ Нет пользователей с ttclid = second_chance_100326")
+            return
+
+        # 2. Загружаем всех пользователей из панели
+        panel_users = await x3.get_all_users()  # список словарей с полными данными
+        logger.info(f"Загружено {len(panel_users)} пользователей из панели")
+
+        # 3. Строим множество telegram_id из панели для быстрого поиска
+        #    и сохраняем дату последнего онлайна
+        panel_dict = {}
+        for user in panel_users:
+            tg_id = user.get('telegramId')
+            if tg_id is not None:
+                panel_dict[int(tg_id)] = user
+
+        # 4. Проверяем каждого пользователя из списка
+        cutoff_date = datetime(2026, 3, 10, 0, 0, 0, tzinfo=timezone.utc)
+        online_after_cutoff = 0
+        not_found_in_panel = 0
+        online_before_or_never = 0
+
+        for uid in user_ids:
+            user_panel = panel_dict.get(uid)
+            if not user_panel:
+                not_found_in_panel += 1
+                continue
+
+            # Проверяем onlineAt (последнее подключение)
+            online_at_str = user_panel.get('userTraffic', {}).get('onlineAt')
+            if not online_at_str:
+                online_before_or_never += 1
+                continue
+
+            try:
+                online_dt = datetime.fromisoformat(online_at_str.replace('Z', '+00:00'))
+                if online_dt >= cutoff_date:
+                    online_after_cutoff += 1
+                else:
+                    online_before_or_never += 1
+            except (ValueError, TypeError):
+                online_before_or_never += 1
+
+        # 5. Формируем ответ
+        report = (
+            f"📊 Статистика по ttclid = second_chance_100326\n"
+            f"👥 Всего в БД: {len(user_ids)}\n"
+            f"✅ Онлайн после 10.03.2026: {online_after_cutoff}\n"
+            f"❌ Не были онлайн после 10.03.2026 (или никогда): {online_before_or_never}\n"
+            f"🔍 Не найдены в панели: {not_found_in_panel}"
+        )
+        await message.answer(report)
+        logger.info(f"Админ {message.from_user.id} выполнил /get_second: {report}")
+
+    except Exception as e:
+        logger.error(f"Ошибка в /get_second: {e}")
+        await message.answer(f"❌ Ошибка: {str(e)}")
