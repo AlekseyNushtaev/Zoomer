@@ -1,8 +1,11 @@
 import random
 from datetime import datetime
 
+from sqlalchemy import select
+
 from bot import sql, x3, bot
 from config import ADMIN_IDS
+from config_bd.models import Users
 from keyboard import create_kb
 from logging_config import logger
 import asyncio
@@ -286,18 +289,24 @@ async def check_online(message: Message):
         return
     users_x3 = await x3.get_all_users()
     for user in users_x3:
-        await asyncio.sleep(0.3)
-        random_squad = random.choice([squad_1, squad_2, squad_3, squad_4, squad_5])
-        username = user.get('username', '')
-        if 'white' not in username and 'cascade-bridge-system' not in username:
-            uuid = user.get('uuid')
-            connect = user.get('firstConnectedAt')
-            if uuid and connect:
-                if await x3.update_user_squads(uuid, random_squad):
-                    success_count += 1
-                else:
-                    fail_count += 1
-    await message.answer(f"{len(users_x3)} - всего юзеров в панели\n{success_count + fail_count} - подключенных\n{success_count} - обновлено\n{fail_count} - ошибка")
+        try:
+            await asyncio.sleep(0.3)
+            random_squad = random.choice([squad_1, squad_2, squad_3, squad_4, squad_5])
+            username = user.get('username', '')
+            if 'white' not in username and 'cascade-bridge-system' not in username:
+                uuid = user.get('uuid')
+                if user['userTraffic']['firstConnectedAt']:
+                    connected_str = user['userTraffic']['onlineAt']
+                    connected_dt = datetime.fromisoformat(connected_str.replace('Z', '+00:00'))
+                    connected_date = connected_dt.date()
+                    if connected_date == datetime.now().date() and uuid:
+                        if await x3.update_user_squads(uuid, random_squad):
+                            success_count += 1
+                        else:
+                            fail_count += 1
+        except:
+            pass
+    await message.answer(f"{len(users_x3)} - всего юзеров в панели\n{success_count + fail_count} - онлайн сегодня\n{success_count} - обновлено\n{fail_count} - ошибка")
 
 
 @router.message(Command(commands=['check_connect']))
@@ -382,6 +391,179 @@ async def sync_panel(message: Message):
         f"🔄 Обновлено дат в БД: {updated}\n"
         f"➕ Добавлено в панель (day=0): {added_to_panel}\n"
         f"❌ Не удалось добавить (ошибки): {not_found}"
+    )
+    await message.answer(report)
+    logger.info(report)
+
+
+
+
+@router.message(Command(commands=['sub_update']))
+async def sub_update_command(message: Message):
+    """Корректировка срока подписки (обычной или white) в панели и БД."""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    args = message.text.split()
+    white_flag = False
+
+    # Разбор аргументов
+    if len(args) >= 2 and args[1].lower() == 'white':
+        white_flag = True
+        if len(args) < 4:
+            await message.answer("Использование: /sub_update white <telegram_id> <delta_days>")
+            return
+        user_id_str = args[2]
+        delta_str = args[3]
+    else:
+        if len(args) < 3:
+            await message.answer("Использование: /sub_update <telegram_id> <delta_days>")
+            return
+        user_id_str = args[1]
+        delta_str = args[2]
+
+    try:
+        user_id = int(user_id_str)
+        delta = int(delta_str)
+    except ValueError:
+        await message.answer("❌ Неверный формат ID или количества дней.")
+        return
+
+    username = str(user_id) + ('_white' if white_flag else '')
+
+    # Проверка наличия пользователя в БД (необязательно, но для информации)
+    user_data = await sql.SELECT_ID(user_id)
+    if not user_data:
+        await message.answer("⚠️ Пользователь не найден в БД, но операция может быть выполнена в панели.")
+
+    try:
+        success, new_expire = await x3.adjust_subscription_days(username, delta, user_id)
+
+        if not success:
+            await message.answer("❌ Ошибка при обновлении подписки в панели.")
+            return
+
+        if new_expire is not None:
+            # Обновляем БД (пользователь существовал, изменения в панели успешны)
+            if white_flag:
+                await sql.update_white_subscription_end_date(user_id, new_expire)
+            else:
+                await sql.update_subscription_end_date(user_id, new_expire)
+            await message.answer(
+                f"✅ Подписка обновлена.\n"
+                f"📅 Новая дата окончания: {new_expire.strftime('%Y-%m-%d %H:%M:%S')} UTC"
+            )
+        else:
+            # Пользователь был создан через addClient, БД уже обновлена
+            # Получаем дату из БД для отчёта
+            user_full = await sql.SELECT_ID(user_id)
+            if user_full:
+                final_date = user_full[10] if white_flag else user_full[
+                    9]  # white_subscription_end_date / subscription_end_date
+                if final_date:
+                    await message.answer(
+                        f"✅ Пользователь создан в панели.\n"
+                        f"📅 Дата окончания: {final_date.strftime('%Y-%m-%d %H:%M:%S')}"
+                    )
+                else:
+                    await message.answer("✅ Пользователь создан, но дата окончания не определена.")
+            else:
+                await message.answer("✅ Пользователь создан, но не удалось прочитать дату из БД.")
+    except Exception as e:
+        logger.error(f"Ошибка в /sub_update: {e}")
+        await message.answer(f"❌ Произошла ошибка: {e}")
+
+
+@router.message(Command(commands=['second_chance']))
+async def second_chance_command(message: Message):
+    """Добавляет 3 дня подписки пользователям с is_pay_null=True, is_tarif=True и subscription_end_date < 2026-03-06 01:00"""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    # Фиксированная дата отсечения (UTC)
+    cutoff = datetime(2026, 3, 6, 1, 0, 0)
+
+    await message.answer("🔍 Ищу пользователей для акции second_chance...")
+
+    async with sql.session_factory() as session:
+        stmt = select(Users).where(
+            Users.is_delete == False,
+            Users.is_pay_null == True,
+            Users.subscription_end_date.isnot(None),
+            Users.subscription_end_date < cutoff
+        )
+        result = await session.execute(stmt)
+        users = result.scalars().all()
+
+    total = len(users)
+    if total == 0:
+        await message.answer("❌ Нет пользователей, подходящих под условия.")
+        return
+
+    await message.answer(f"✅ Найдено {total} пользователей. Начинаю обработку...")
+
+    success_count = 0
+    fail_count = 0
+    msg_fail = 0
+    ttclid_updated = 0
+    users = [1012882762]
+
+    for user in users:
+        user_id = user
+        username = str(user_id)  # обычная подписка (без _white)
+
+        try:
+            # 1. Добавляем 3 дня в панели и получаем новую дату
+            success, new_expire = await x3.adjust_subscription_days(username, 3, user_id)
+            if not success or new_expire is None:
+                logger.error(f"Ошибка обновления подписки для {user_id}")
+                fail_count += 1
+                continue
+
+            # 2. Обновляем дату в БД
+            await sql.update_subscription_end_date(user_id, new_expire)
+
+            # 3. Отправляем сообщение
+            try:
+                await bot.send_message(
+                    chat_id=user_id,
+                    text='''
+⚡️ Новые сервера. Космическая скорость. Второй шанс.
+
+Друзья, мы прокачали железо. Теперь наш VPN быстрый настолько, что вы забудете о буферизации. Идеально для игр и стриминговых сервисов.
+
+Это важно: <b>Мы добавили вам еще 3 дня</b>, чтобы вы оценили обновленную скорость.
+
+▶️ Если раньше были проблемы с подключением — вот видеоинструкция. Всё просто и понятно.
+
+Попробуйте сами. 🌐 Будьте свободны!
+                    ''',
+                    reply_markup=create_kb(1, connect_vpn='🔗 Подключить VPN', video_faq='Смотреть видеоинструкцию')
+                )
+                success_count += 1
+            except Exception as e:
+                logger.error(f"Не удалось отправить сообщение {user_id}: {e}")
+                msg_fail += 1
+
+            # 4. Обновляем ttclid
+            await sql.UPDATE_TTCLID(user_id, 'second_chance_100326')
+            ttclid_updated += 1
+
+            # Небольшая задержка, чтобы не нагружать API
+            await asyncio.sleep(0.05)
+
+        except Exception as e:
+            logger.error(f"Критическая ошибка при обработке {user_id}: {e}")
+            fail_count += 1
+
+    # Итоговый отчёт
+    report = (
+        f"✅ Акция second_chance завершена.\n"
+        f"📊 Всего подходящих: {total}\n"
+        f"🔄 Успешно обработано: {success_count}\n"
+        f"❌ Ошибок обновления подписки: {fail_count}\n"
+        f"📨 Ошибок отправки сообщений: {msg_fail}\n"
+        f"🏷 Обновлено ttclid: {ttclid_updated}"
     )
     await message.answer(report)
     logger.info(report)

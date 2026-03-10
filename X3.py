@@ -382,7 +382,7 @@ class X3:
         lst_users = []
         try:
             users_all = []
-            for i in range(50):
+            for i in range(100):
                 data = await self.list(1000 * i + 1)
                 if data['response']['users']:
                     users_all.extend(data['response']['users'])
@@ -407,7 +407,7 @@ class X3:
         lst_users = []
         try:
             users_all = []
-            for i in range(50):  # максимум 50 страниц
+            for i in range(100):  # максимум 50 страниц
                 data = await self.list(1000 * i + 1)
                 if data['response']['users']:
                     users_all.extend(data['response']['users'])
@@ -470,7 +470,7 @@ class X3:
         lst_users = []
         try:
             users_all = []
-            for i in range(50):  # максимум 50 страниц
+            for i in range(100):  # максимум 50 страниц
                 data = await self.list(1000 * i + 1)
                 if data['response']['users']:
                     users_all.extend(data['response']['users'])
@@ -482,3 +482,83 @@ class X3:
         except Exception as e:
             logger.error(f"Ошибка при получении всех пользователей: {e}")
         return lst_users
+
+
+    async def adjust_subscription_days(self, username: str, delta_days: int, user_id: int):
+        """
+        Корректирует срок подписки пользователя в панели.
+        - Если пользователь существует: прибавляет delta_days к текущей дате и корректирует статус.
+        - Если пользователь не существует и delta_days > 0: создаёт нового через addClient.
+        Возвращает (успех, новая_дата_UTC или None при создании через addClient).
+        """
+        # Пытаемся получить существующего пользователя
+        user_data = await self.get_user_by_username(username)
+        if not user_data or 'response' not in user_data:
+            # Пользователь отсутствует в панели
+            if delta_days > 0:
+                # Создаём нового через addClient (он сам обновит БД)
+                success = await self.addClient(delta_days, username, user_id)
+                return success, None
+            else:
+                logger.error(f"Пользователь {username} не найден, а delta_days <= 0")
+                return False, None
+
+        user = user_data['response']
+        uuid_user = user['uuid']
+        expire_str = user.get('expireAt')
+        if not expire_str:
+            logger.error(f"У пользователя {username} нет поля expireAt")
+            return False, None
+
+        current_expire = datetime.datetime.fromisoformat(expire_str.replace('Z', '+00:00'))
+        now = datetime.datetime.now(datetime.timezone.utc)
+        new_expire = current_expire + datetime.timedelta(days=delta_days)
+        if new_expire < now:
+            new_expire = now + datetime.timedelta(minutes=1)
+
+        # Определяем новый статус
+        new_status = 'ACTIVE'
+
+        # Сохраняем остальные поля (чтобы не сбросить лимиты и squad)
+        traffic_limit_bytes = user.get('trafficLimitBytes', 0)
+        traffic_limit_strategy = user.get('trafficLimitStrategy', 'NO_RESET')
+        raw_squads = user.get('activeInternalSquads', [])
+        squads = [s['uuid'] if isinstance(s, dict) else s for s in raw_squads]
+
+        data = {
+            "uuid": uuid_user,
+            "expireAt": new_expire.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z',
+            "status": new_status,
+            "trafficLimitBytes": traffic_limit_bytes,
+            "trafficLimitStrategy": traffic_limit_strategy,
+            "activeInternalSquads": squads
+        }
+
+        session = await self._get_session()
+        try:
+            async with session.patch(
+                    f"{self.target_url}/api/users",
+                    json=data,
+                    params=self.params,
+                    timeout=aiohttp.ClientTimeout(total=15)
+            ) as response:
+                if response.status == 200:
+                    try:
+                        resp_json = await response.json()
+                        if resp_json.get('success', True):
+                            logger.info(f"✅ Скорректирована подписка {username}: новая дата {new_expire}")
+                            return True, new_expire
+                        else:
+                            logger.error(f"Ошибка API: {resp_json}")
+                            return False, None
+                    except:
+                        # Нет JSON, но статус 200 – считаем успехом
+                        logger.warning(f"Обновление {username} вернуло 200 без JSON, считаем успешным")
+                        return True, new_expire
+                else:
+                    error_text = await response.text() if response.content else "No body"
+                    logger.error(f"Ошибка HTTP {response.status}: {error_text}")
+                    return False, None
+        except Exception as e:
+            logger.error(f"Исключение при корректировке подписки {username}: {e}")
+            return False, None

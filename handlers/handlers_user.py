@@ -6,7 +6,7 @@ from bot import sql, x3
 from config import CHANEL_ID
 from keyboard import (keyboard_start, keyboard_start_bonus, keyboard_tariff_bonus, keyboard_tariff,
                       keyboard_subscription, ref_keyboard, keyboard_gift_tariff,
-                      keyboard_payment_method, keyboard_payment_method_stock, chanel_keyboard)
+                      keyboard_payment_method, keyboard_payment_method_stock, chanel_keyboard, create_kb)
 from logging_config import logger
 import asyncio
 from aiogram import Router, F
@@ -314,6 +314,13 @@ async def activate_gift(message: Message, gift_id: str):
         if await sql.SELECT_ID(message.from_user.id) is None:
             await sql.INSERT(message.from_user.id, False)
         return False
+
+
+@router.callback_query(F.data == 'video_faq')
+async def video_faq(callback: CallbackQuery):
+    await callback.message.answer_video(video='BAACAgIAAxkBAAEBk_5pmqIm8a5-5ioQ3GziIJ4dBH9PugAC_ZgAAtS92EjbvWnuAla0dDoE',
+                                        caption=lexicon['push_not_subscribed_3h'],
+                                        reply_markup=create_kb(1, back_to_main='🔙 Назад'))
 
 
 @router.callback_query(F.data == 'back_to_buy_menu')
