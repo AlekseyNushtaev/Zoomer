@@ -507,7 +507,7 @@ async def second_chance_command(message: Message):
     msg_fail = 0
     ttclid_updated = 0
 
-    for user in users[:10]:
+    for user in users:
         user_id = user.user_id
         username = str(user_id)  # обычная подписка (без _white)
 
@@ -549,7 +549,7 @@ async def second_chance_command(message: Message):
             ttclid_updated += 1
 
             # Небольшая задержка, чтобы не нагружать API
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.1)
 
         except Exception as e:
             logger.error(f"Критическая ошибка при обработке {user_id}: {e}")
