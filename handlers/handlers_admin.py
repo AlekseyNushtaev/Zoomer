@@ -605,7 +605,7 @@ async def get_second_command(message: Message):
         not_found_in_panel = 0
         online_before_or_never = 0
 
-        for uid in user_ids:
+        for uid in user_ids[500:]:
             user_panel = panel_dict.get(uid)
             if not user_panel:
                 not_found_in_panel += 1
@@ -615,22 +615,25 @@ async def get_second_command(message: Message):
             online_at_str = user_panel.get('userTraffic', {}).get('onlineAt')
             if not online_at_str:
                 online_before_or_never += 1
-                await bot.send_message(
-                    chat_id=uid,
-                    text='''
-                ⚡️ Новые сервера. Космическая скорость. Второй шанс.
-
-                Друзья, мы прокачали железо. Теперь наш VPN быстрый настолько, что вы забудете о буферизации. 
-
-                Это важно: <b>Мы добавили вам еще 3 дня</b>, чтобы вы оценили обновленную скорость.
-
-                ▶️ Если раньше были проблемы с подключением — вот видеоинструкция. Всё просто и понятно.
-
-                Попробуйте сами. 🌐 Будьте свободны!
-                                    ''',
-                    reply_markup=create_kb(1, connect_vpn='🔗 Подключить VPN', video_faq='Смотреть видеоинструкцию')
-                )
-                await asyncio.sleep(0.05)
+                try:
+                    await bot.send_message(
+                        chat_id=uid,
+                        text='''
+                    ⚡️ Новые сервера. Космическая скорость. Второй шанс.
+    
+                    Друзья, мы прокачали железо. Теперь наш VPN быстрый настолько, что вы забудете о буферизации. 
+    
+                    Это важно: <b>Мы добавили вам еще 3 дня</b>, чтобы вы оценили обновленную скорость.
+    
+                    ▶️ Если раньше были проблемы с подключением — вот видеоинструкция. Всё просто и понятно.
+    
+                    Попробуйте сами. 🌐 Будьте свободны!
+                                        ''',
+                        reply_markup=create_kb(1, connect_vpn='🔗 Подключить VPN', video_faq='Смотреть видеоинструкцию')
+                    )
+                    await asyncio.sleep(0.05)
+                except:
+                    pass
                 continue
 
             try:
@@ -639,22 +642,25 @@ async def get_second_command(message: Message):
                     online_after_cutoff += 1
                 else:
                     online_before_or_never += 1
-                    await bot.send_message(
-                        chat_id=uid,
-                        text='''
-                                    ⚡️ Новые сервера. Космическая скорость. Второй шанс.
-
-                                    Друзья, мы прокачали железо. Теперь наш VPN быстрый настолько, что вы забудете о буферизации. 
-
-                                    Это важно: <b>Мы добавили вам еще 3 дня</b>, чтобы вы оценили обновленную скорость.
-
-                                    ▶️ Если раньше были проблемы с подключением — вот видеоинструкция. Всё просто и понятно.
-
-                                    Попробуйте сами. 🌐 Будьте свободны!
-                                                        ''',
-                        reply_markup=create_kb(1, connect_vpn='🔗 Подключить VPN', video_faq='Смотреть видеоинструкцию')
-                    )
-                    await asyncio.sleep(0.05)
+                    try:
+                        await bot.send_message(
+                            chat_id=uid,
+                            text='''
+                                        ⚡️ Новые сервера. Космическая скорость. Второй шанс.
+    
+                                        Друзья, мы прокачали железо. Теперь наш VPN быстрый настолько, что вы забудете о буферизации. 
+    
+                                        Это важно: <b>Мы добавили вам еще 3 дня</b>, чтобы вы оценили обновленную скорость.
+    
+                                        ▶️ Если раньше были проблемы с подключением — вот видеоинструкция. Всё просто и понятно.
+    
+                                        Попробуйте сами. 🌐 Будьте свободны!
+                                                            ''',
+                            reply_markup=create_kb(1, connect_vpn='🔗 Подключить VPN', video_faq='Смотреть видеоинструкцию')
+                        )
+                        await asyncio.sleep(0.05)
+                    except:
+                        pass
             except (ValueError, TypeError):
                 online_before_or_never += 1
 
