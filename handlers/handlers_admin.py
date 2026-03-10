@@ -639,6 +639,22 @@ async def get_second_command(message: Message):
                     online_after_cutoff += 1
                 else:
                     online_before_or_never += 1
+                    await bot.send_message(
+                        chat_id=uid,
+                        text='''
+                                    ⚡️ Новые сервера. Космическая скорость. Второй шанс.
+
+                                    Друзья, мы прокачали железо. Теперь наш VPN быстрый настолько, что вы забудете о буферизации. 
+
+                                    Это важно: <b>Мы добавили вам еще 3 дня</b>, чтобы вы оценили обновленную скорость.
+
+                                    ▶️ Если раньше были проблемы с подключением — вот видеоинструкция. Всё просто и понятно.
+
+                                    Попробуйте сами. 🌐 Будьте свободны!
+                                                        ''',
+                        reply_markup=create_kb(1, connect_vpn='🔗 Подключить VPN', video_faq='Смотреть видеоинструкцию')
+                    )
+                    await asyncio.sleep(0.05)
             except (ValueError, TypeError):
                 online_before_or_never += 1
 
