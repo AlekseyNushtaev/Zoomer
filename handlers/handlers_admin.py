@@ -506,10 +506,9 @@ async def second_chance_command(message: Message):
     fail_count = 0
     msg_fail = 0
     ttclid_updated = 0
-    users = [1012882762]
 
-    for user in users:
-        user_id = user
+    for user in users[:10]:
+        user_id = user.user_id
         username = str(user_id)  # обычная подписка (без _white)
 
         try:
