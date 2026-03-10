@@ -514,7 +514,7 @@ class X3:
         now = datetime.datetime.now(datetime.timezone.utc)
         new_expire = current_expire + datetime.timedelta(days=delta_days)
         if new_expire < now:
-            new_expire = now + datetime.timedelta(minutes=1)
+            new_expire = now + datetime.timedelta(days=delta_days)
 
         # Определяем новый статус
         new_status = 'ACTIVE'
