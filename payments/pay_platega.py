@@ -9,7 +9,6 @@ from config import PLATEGA_API_KEY, PLATEGA_MERCHANT_ID, ADMIN_IDS
 from keyboard import keyboard_payment_sbp, create_kb
 from lexicon import dct_price, dct_desc, lexicon
 from logging_config import logger
-from payments.pay_cryptobot import get_crypto_amount
 
 router = Router()
 
@@ -196,6 +195,8 @@ async def process_payment_sbp(callback: CallbackQuery):
     if 'white' in duration:
         duration = duration.replace('white_', '')
         white_flag = True
+    if 'old' in duration:
+        duration = duration.replace('old', '')
 
     if gift_flag:
         payment_info = await pay_for_gift(
@@ -251,6 +252,8 @@ async def process_payment_card(callback: CallbackQuery):
     if 'white' in duration:
         duration = duration.replace('white_', '')
         white_flag = True
+    if 'old' in duration:
+        duration = duration.replace('old', '')
 
     if gift_flag:
         payment_info = await pay_for_gift(
@@ -309,6 +312,8 @@ async def process_payment_crypto(callback: CallbackQuery):
     if 'white' in duration:
         white_flag = True
         duration = duration.replace('white_', '')
+    if 'old' in duration:
+        duration = duration.replace('old', '')
 
     if callback.from_user.id in ADMIN_IDS:
         rub_amount = 1

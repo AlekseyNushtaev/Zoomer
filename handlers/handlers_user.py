@@ -166,7 +166,7 @@ async def direct_connect_vpn_cb(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data.in_({'r_30', 'r_90', 'r_180', 'r_white_30'}))
+@router.callback_query(F.data.in_({'r_7', 'r_30', 'r_90', 'r_180', 'r_white_30', 'r_30old'}))
 async def process_payment_method(callback: CallbackQuery):
     await callback.answer()
     if 'white' in callback.data:

@@ -68,8 +68,8 @@ def keyboard_start():
 
 def keyboard_tariff_bonus():
     return create_kb(1,
-                     r_30='🤝 30 дней - 99 руб',
-                     r_90='👌 90 дней - 269 руб',
+                     r_7='🤌 7 дней - 99 руб',
+                     r_30='🤝 30 дней - 139 руб',
                      r_180='💪 180 дней - 499 руб',
                      r_white_30='🦾 Включи мобильный - 299 руб',
                      free_vpn='🔥ПОПРОБОВАТЬ 5 дней БЕСПЛАТНО🔥',
@@ -79,7 +79,17 @@ def keyboard_tariff_bonus():
 
 def keyboard_tariff():
     return create_kb(1,
-                     r_30='🤝 30 дней - 99 руб',
+                     r_7='🤌 7 дней - 99 руб',
+                     r_30='🤝 30 дней - 139 руб',
+                     r_90='👌 90 дней - 269 руб',
+                     r_180='💪 180 дней - 499 руб',
+                     back_to_main='🔙 Назад'
+                     )
+
+
+def keyboard_tariff_old():
+    return create_kb(1,
+                     r_30old='🤝 30 дней - 99 руб',
                      r_90='👌 90 дней - 269 руб',
                      r_180='💪 180 дней - 499 руб',
                      r_white_30='🦾 Включи мобильный - 299 руб',
@@ -89,7 +99,8 @@ def keyboard_tariff():
 
 def keyboard_gift_tariff():
     return create_kb(1,
-                     gift_r_30='🤝 30 дней - 99 руб',
+                     gift_r_7='🤌 7 дней - 99 руб',
+                     gift_r_30='🤝 30 дней - 139 руб',
                      gift_r_90='👌 90 дней - 269 руб',
                      gift_r_180='💪 180 дней - 499 руб',
                      gift_r_white_30='🦾 Включи мобильный - 299 руб',
@@ -133,7 +144,7 @@ def keyboard_payment_method(tarif):
         [InlineKeyboardButton(text="💎 Криптовалюта", callback_data=f"crypto_{tarif}")],
         # [InlineKeyboardButton(text="💎 TON", callback_data=f"crypto_ton_{tarif}")],
         # [InlineKeyboardButton(text="💵 USDT", callback_data=f"crypto_usdt_{tarif}")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data='back_to_buy_menu')],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data='back_to_main')],
     ])
     return keyboard
 
