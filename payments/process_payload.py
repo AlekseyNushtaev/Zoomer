@@ -30,7 +30,7 @@ async def process_confirmed_payment(payload):
             currency = 'руб'
         elif method == 'stars':
             currency = '⭐️'
-            await sql.add_payment_stars(user_id, amount, is_gift)
+            await sql.add_payment_stars(user_id, amount, payload, is_gift)
         elif method in ('ton', 'usdt'):
             currency = method.upper()
         else:

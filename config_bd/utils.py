@@ -586,14 +586,15 @@ class AsyncSQL:
             await session.execute(stmt)
             await session.commit()
 
-    async def add_payment_stars(self, user_id: int, amount: int, is_gift: bool) -> None:
+    async def add_payment_stars(self, user_id: int, amount: int, payload: str, is_gift: bool) -> None:
         """Добавляет запись в таблицу payments_stars."""
         async with self.session_factory() as session:
             payment = PaymentsStars(
                 user_id=user_id,
                 amount=amount,
+                payload=payload,
                 is_gift=is_gift,
-                status='confirmed'  # по умолчанию confirmed, как в старом коде
+                status='confirmed'
             )
             session.add(payment)
             try:
@@ -640,7 +641,7 @@ class AsyncSQL:
             session.add(online_record)
             await session.commit()
 
-    async def add_platega_payment(self, user_id: int, amount: int, status: str, transaction_id: str,
+    async def add_platega_payment(self, user_id: int, amount: int, status: str, transaction_id: str, payload: str,
                                   is_gift: bool = False) -> None:
         """
         Записывает платёж Platega в таблицу payments.
@@ -651,6 +652,7 @@ class AsyncSQL:
                 amount=amount,
                 status=status,
                 transaction_id=transaction_id,
+                payload=payload,
                 is_gift=is_gift
             )
             session.add(payment)

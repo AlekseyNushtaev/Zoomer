@@ -89,7 +89,7 @@ async def export_database_to_excel(message: Message):
 
         # --- Лист PAYMENTS (Platega) ---
         ws_payments = wb.create_sheet(title="payments_sbp")
-        payments_columns = ['ID', 'User ID', 'Amount', 'Time Created', 'Is Gift', 'Status', 'Transaction_Id']
+        payments_columns = ['ID', 'User ID', 'Amount', 'Time Created', 'Is Gift', 'Status', 'Transaction_Id', 'payload']
         for col_num, title in enumerate(payments_columns, 1):
             cell = ws_payments.cell(row=1, column=col_num, value=title)
             cell.alignment = header_alignment
@@ -147,7 +147,7 @@ async def export_database_to_excel(message: Message):
 
         # --- Лист PAYMENTS_STARS ---
         ws_payments_stars = wb.create_sheet(title="payments_stars")
-        stars_columns = ['ID', 'User ID', 'Amount (Stars)', 'Time Created', 'Is Gift', 'Status']
+        stars_columns = ['ID', 'User ID', 'Amount (Stars)', 'Time Created', 'Is Gift', 'Status', 'payload']
         for col_num, title in enumerate(stars_columns, 1):
             cell = ws_payments_stars.cell(row=1, column=col_num, value=title)
             cell.alignment = header_alignment
