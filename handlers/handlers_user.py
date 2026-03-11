@@ -391,7 +391,7 @@ async def inline_partner(inline_query: InlineQuery):
 
 https://t.me/zoomerskyvpn_bot?start=ref{user_id}
 
-Работает быстро и стабильно.
+🚀Работает быстро и стабильно.
     '''
 
     result = InlineQueryResultArticle(
@@ -401,7 +401,7 @@ https://t.me/zoomerskyvpn_bot?start=ref{user_id}
         input_message_content=InputTextMessageContent(
             message_text=text,
             parse_mode='HTML',
-            disable_web_page_preview=True
+            disable_web_page_preview=False
         ),
         reply_markup=keyboard_inline_ref(user_id),
         thumb_url="https://img.freepik.com/premium-photo/glowing-blue-neon-wifi-signal-icon-dark-background_989822-6238.jpg?semt=ais_hybrid"  # опционально: иконка
