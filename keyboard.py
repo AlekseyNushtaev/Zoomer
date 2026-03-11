@@ -161,15 +161,23 @@ def keyboard_payment_stars(stars_amount):
             ])
 
 
-def ref_keyboard(user_id):
-    # Создаем клавиатуру с инлайн-кнопками
+def ref_keyboard():
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
                 text="Пригласить друзей🫶",
-                url=f"https://t.me/share/url?url=https://t.me/zoomerskyvpn_bot?start=ref{user_id}&text={urllib.parse.quote('Вот ссылка для тебя на топовый ВПН!')}"
+                switch_inline_query="partner"
             )
         ],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_main")]
     ])
     return keyboard
+
+
+def keyboard_inline_ref(user_id):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="🔗 Подключить VPN",
+            url=f"https://t.me/zoomerskyvpn_bot?start=ref{user_id}")]
+    ]
+    )

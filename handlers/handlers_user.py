@@ -2,15 +2,17 @@ import time
 
 import requests
 
-from bot import sql, x3
+from bot import sql, x3, bot
 from config import CHANEL_ID
 from keyboard import (keyboard_start, keyboard_start_bonus, keyboard_tariff_bonus, keyboard_tariff,
                       keyboard_subscription, ref_keyboard, keyboard_gift_tariff,
-                      keyboard_payment_method, keyboard_payment_method_stock, chanel_keyboard, create_kb)
+                      keyboard_payment_method, keyboard_payment_method_stock, chanel_keyboard, create_kb,
+                      keyboard_inline_ref)
 from logging_config import logger
 import asyncio
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, ChatMemberUpdated
+from aiogram.types import Message, CallbackQuery, ChatMemberUpdated, InlineQueryResultArticle, InputTextMessageContent, \
+    InlineQuery
 from aiogram.filters import ChatMemberUpdatedFilter, KICKED, MEMBER, Command
 from lexicon import lexicon
 
@@ -234,7 +236,7 @@ async def referral_program(callback: CallbackQuery):
     count = await sql.SELECT_COUNT_REF(int(callback.from_user.id))
     await callback.message.answer(
         text=lexicon['ref_info'].format(count, callback.from_user.id),
-        reply_markup=ref_keyboard(callback.from_user.id),
+        reply_markup=ref_keyboard(),
         disable_web_page_preview=True
     )
 
@@ -378,3 +380,36 @@ async def handle_chat_member_update(update: ChatMemberUpdated):
     elif update.old_chat_member.status != "left" and update.new_chat_member.status == "left":
         await sql.UPDATE_ADMIN(user_id, False)
         logger.warning(f"User {user_id} left chanel")
+
+
+@router.inline_query(lambda query: query.query == 'partner')
+async def inline_partner(inline_query: InlineQuery):
+    user_id = inline_query.from_user.id
+
+    text = f'''
+Привет. Подключись к VPN по моей ссылке:
+
+https://t.me/zoomerskyvpn_bot?start=ref{user_id}
+
+Работает быстро и стабильно.
+    '''
+
+    result = InlineQueryResultArticle(
+        id="1",
+        title='🤝🤝🤝 Приглашение',
+        description="Друг, перешедший по этой кнопке станет Вашим рефералом.",
+        input_message_content=InputTextMessageContent(
+            message_text=text,
+            parse_mode='HTML',
+            disable_web_page_preview=True
+        ),
+        reply_markup=keyboard_inline_ref(user_id),
+        thumb_url="https://img.freepik.com/premium-photo/glowing-blue-neon-wifi-signal-icon-dark-background_989822-6238.jpg?semt=ais_hybrid"  # опционально: иконка
+    )
+
+    # Отправляем результат обратно в Telegram
+    await bot.answer_inline_query(
+        inline_query.id,
+        results=[result],
+        cache_time=0
+    )
