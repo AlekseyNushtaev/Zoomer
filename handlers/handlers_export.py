@@ -98,7 +98,7 @@ async def export_database_to_excel(message: Message):
         for row_num, pay in enumerate(payments_list, 2):
             row_data = [
                 pay.id, pay.user_id, pay.amount, pay.time_created,
-                pay.is_gift, pay.status, pay.transaction_id
+                pay.is_gift, pay.status, pay.transaction_id, pay.payload
             ]
             for col_num, value in enumerate(row_data, 1):
                 if col_num == 4 and value and isinstance(value, datetime):
@@ -156,7 +156,7 @@ async def export_database_to_excel(message: Message):
         for row_num, ps in enumerate(payments_stars_list, 2):
             row_data = [
                 ps.id, ps.user_id, ps.amount, ps.time_created,
-                ps.is_gift, ps.status
+                ps.is_gift, ps.status, ps.payload
             ]
             for col_num, value in enumerate(row_data, 1):
                 if col_num == 4 and value and isinstance(value, datetime):
