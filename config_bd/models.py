@@ -53,6 +53,7 @@ class Payments(Base):
     is_gift = Column(Boolean, default=False)
     status = Column(String, nullable=True)
     transaction_id = Column(String, nullable=True)
+    payload = Column(String, nullable=True)
 
 
 class PaymentsCards(Base):
@@ -90,6 +91,7 @@ class PaymentsStars(Base):
     time_created = Column(DateTime, default=datetime.now)
     is_gift = Column(Boolean, default=False)
     status = Column(String, default='confirmed')
+    payload = Column(String, nullable=True)
 
 
 class PaymentsCryptobot(Base):
