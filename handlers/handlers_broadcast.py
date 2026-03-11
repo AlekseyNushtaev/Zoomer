@@ -3,7 +3,7 @@ import urllib.parse
 from bot import sql
 from botapi_sender import send_message
 from config import ADMIN_IDS
-from keyboard import create_kb
+from keyboard import create_kb, keyboard_tariff_old
 from logging_config import logger
 import asyncio
 from aiogram import Router, Bot, F
@@ -167,7 +167,7 @@ async def broadcast_confirm_send(callback: CallbackQuery, state: FSMContext, bot
         keyboard_broadcast = create_kb(1, free_vpn='🔥 Попробовать бесплатно')
     elif selected_parameter == 'connected_never_paid':
         user_ids = await sql.SELECT_CONNECTED_NEVER_PAID()
-        keyboard_broadcast = create_kb(1, r_120='🔥 Акция: 120 дней - 269 руб')
+        keyboard_broadcast = keyboard_tariff_old()
     elif selected_parameter == 'subscribed_all':
         user_ids = await sql.SELECT_SUBSCRIBED()
         keyboard_broadcast = create_kb(1, connect_vpn='🔗 Подключить VPN')
