@@ -222,6 +222,10 @@ async def process_payment_sbp(callback: CallbackQuery):
             text = lexicon['payment_link']
             if white_flag:
                 text = lexicon['payment_link_white']
+            if 'gift' in callback.data:
+                text += '\n\nДля оплаты <b>подарочной подписки</b> перейдите по ссылке:'
+            else:
+                text += '\n\nДля оплаты тарифа перейдите по ссылке:'
             await callback.message.edit_text(
                 text=text,
                 reply_markup=keyboard_payment_sbp("💳 Оплатить через СБП", payment_info['url'])
@@ -279,6 +283,10 @@ async def process_payment_card(callback: CallbackQuery):
             text = lexicon['payment_link']
             if white_flag:
                 text = lexicon['payment_link_white']
+            if 'gift' in callback.data:
+                text += '\n\nДля оплаты <b>подарочной подписки</b> перейдите по ссылке:'
+            else:
+                text += '\n\nДля оплаты тарифа перейдите по ссылке:'
             await callback.message.edit_text(
                 text=text,
                 reply_markup=keyboard_payment_sbp("💳 Оплатить по карте", payment_info['url'])
@@ -342,6 +350,10 @@ async def process_payment_crypto(callback: CallbackQuery):
             text = lexicon['payment_link']
             if white_flag:
                 text = lexicon['payment_link_white']
+            if 'gift' in callback.data:
+                text += '\n\nДля оплаты <b>подарочной подписки</b> перейдите по ссылке:'
+            else:
+                text += '\n\nДля оплаты тарифа перейдите по ссылке:'
             await callback.message.edit_text(
                 text=text,
                 reply_markup=keyboard_payment_sbp("💎 Оплатить криптовалютой", payment_info['url'])
