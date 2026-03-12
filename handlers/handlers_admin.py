@@ -641,3 +641,18 @@ async def get_second_command(message: Message):
     except Exception as e:
         logger.error(f"Ошибка в /get_second: {e}")
         await message.answer(f"❌ Ошибка: {str(e)}")
+
+
+@router.message(Command(commands=['update_field']))
+async def update_reserve_field_command(message: Message):
+    """Устанавливает reserve_field = True для всех пользователей с подтверждёнными платежами."""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    await message.answer("🔄 Обновляю reserve_field для пользователей с подтверждёнными платежами...")
+    try:
+        updated = await sql.set_has_discount_for_paid_users()
+        await message.answer(f"✅ Обновлено пользователей: {updated}")
+    except Exception as e:
+        logger.error(f"Ошибка в /update_field: {e}")
+        await message.answer(f"❌ Ошибка: {e}")

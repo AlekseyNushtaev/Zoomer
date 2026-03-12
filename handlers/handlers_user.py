@@ -365,6 +365,10 @@ async def user_unblocked_bot(event: ChatMemberUpdated):
 
 @router.callback_query(F.data == 'r_120')
 async def process_payment_method_bonus(callback: CallbackQuery):
+    user_data = await sql.SELECT_ID(callback.from_user.id)
+    if user_data[8]:
+        await callback.message.answer('Акция действительна только при первой оплате.',
+                                      reply_markup=create_kb(1, back_to_main='🔙 Назад'))
     tariff = callback.data
     await callback.message.answer('Выберите метод оплаты акционной подписки:', reply_markup=keyboard_payment_method_stock(tariff))
 

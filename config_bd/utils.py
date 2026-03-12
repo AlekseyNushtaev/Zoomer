@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select, update, func
+from sqlalchemy import select, update, func, union
 from datetime import datetime, date
 from typing import Optional, List, Tuple, Dict
 
@@ -72,6 +72,14 @@ class AsyncSQL:
             stmt = update(Users).where(Users.user_id == user_id).values(ttclid=ttclid)
             await session.execute(stmt)
             await session.commit()
+
+
+    async def UPDATE_DISCOUNT(self, user_id: int):
+        async with self.session_factory() as session:
+            stmt = update(Users).where(Users.user_id == user_id).values(has_discount=True)
+            await session.execute(stmt)
+            await session.commit()
+
 
     async def UPDATE_DELETE(self, user_id: int, booly: bool):
         async with self.session_factory() as session:
@@ -793,3 +801,36 @@ class AsyncSQL:
                 session.add(WhiteCounter(user_id=user_id))
                 await session.commit()
                 logger.info(f"✅ Добавлена запись в white_counter для пользователя {user_id}")
+
+
+    async def set_has_discount_for_paid_users(self) -> int:
+        """
+        Устанавливает reserve_field = True для всех пользователей,
+        у которых есть хотя бы один подтверждённый платёж в любой из таблиц.
+        Возвращает количество обновлённых записей.
+        """
+        async with self.session_factory() as session:
+
+            subq_payments = select(Payments.user_id).where(Payments.status == 'confirmed')
+            subq_cards = select(PaymentsCards.user_id).where(PaymentsCards.status == 'confirmed')
+            subq_platega_crypto = select(PaymentsPlategaCrypto.user_id).where(
+                PaymentsPlategaCrypto.status == 'confirmed')
+            subq_stars = select(PaymentsStars.user_id).where(PaymentsStars.status == 'confirmed')
+            subq_cryptobot = select(PaymentsCryptobot.user_id).where(PaymentsCryptobot.status == 'paid')
+
+            union_query = union(
+                subq_payments,
+                subq_cards,
+                subq_platega_crypto,
+                subq_stars,
+                subq_cryptobot
+            ).subquery()
+
+            stmt = (
+                update(Users)
+                .where(Users.user_id.in_(union_query))
+                .values(has_discount=True)
+            )
+            result = await session.execute(stmt)
+            await session.commit()
+            return result.rowcount

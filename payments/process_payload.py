@@ -155,6 +155,7 @@ async def process_confirmed_payment(payload):
                 await sql.UPDATE_PAYNULL(user_id)
             else:
                 await sql.INSERT(user_id, True)
+            await sql.UPDATE_DISCOUNT(user_id)
 
             # Отправляем уведомление пользователю
             try:
