@@ -376,12 +376,12 @@ async def check_users_command(message: Message):
             return
 
         # 2. Получаем всех пользователей из панели (один запрос)
-        panel_users = await x3.get_all_users()          # список словарей с полными данными
+        panel_users = await x3.get_all_users()
         logger.info(f"Загружено {len(panel_users)} пользователей из панели")
 
         # 3. Строим словарь для быстрого поиска по telegramId и username
         panel_by_telegram = {}      # ключ: telegramId (int)
-        panel_by_username = {}      # ключ: username (str) – для тех, у кого нет telegramId
+        panel_by_username = {}      # ключ: username (str)
 
         for user in panel_users:
             tg_id = user.get('telegramId')
@@ -389,11 +389,10 @@ async def check_users_command(message: Message):
             if tg_id is not None:
                 panel_by_telegram[int(tg_id)] = user
             elif username:
-                # если telegramId отсутствует, используем username как запасной ключ
                 panel_by_username[username] = user
 
         # 4. Проходим по всем оплаченным пользователям и ищем их в панели
-        mismatched = []      # пользователи с расхождением дат
+        mismatched = []      # кортежи (user_id, db_date, panel_date) для расхождений >=3ч
         not_found_in_panel = []  # пользователи, отсутствующие в панели
         processed = 0
 
@@ -405,7 +404,6 @@ async def check_users_command(message: Message):
             # Пытаемся найти пользователя в панели
             panel_user = panel_by_telegram.get(user_id)
             if panel_user is None:
-                # не нашли по telegramId – пробуем по username (чистый id)
                 panel_user = panel_by_username.get(str(user_id))
 
             if panel_user is None:
@@ -414,51 +412,63 @@ async def check_users_command(message: Message):
 
             expire_str = panel_user.get('expireAt')
             if not expire_str:
-                mismatched.append(user_id)
+                # нет даты в панели – считаем расхождением (panel_date = None)
+                db_expire = await sql.get_subscription_end_date(user_id)
+                mismatched.append((user_id, db_expire, None))
                 continue
 
             try:
                 panel_expire = datetime.fromisoformat(expire_str.replace('Z', '+00:00'))
             except Exception:
-                mismatched.append(user_id)
+                # не удалось распарсить дату панели
+                db_expire = await sql.get_subscription_end_date(user_id)
+                mismatched.append((user_id, db_expire, None))
                 continue
 
             # Получаем дату из БД (обычная подписка)
             db_expire = await sql.get_subscription_end_date(user_id)
-            if db_expire is None:
-                mismatched.append(user_id)
-                continue
             panel_naive = panel_expire.replace(tzinfo=None)
+
+            if db_expire is None:
+                # нет даты в БД
+                mismatched.append((user_id, None, panel_naive))
+                continue
+
             db_naive = db_expire.replace(tzinfo=None)
+            diff_hours = abs((panel_naive - db_naive).total_seconds()) / 3600
 
-            panel_rounded = panel_naive.replace(hour=0, minute=0, second=0, microsecond=0)
-            db_rounded = db_naive.replace(hour=0, minute=0, second=0, microsecond=0)
-            if panel_rounded != db_rounded:
-                logger.warning(f'{panel_rounded} - {db_rounded}')
-                mismatched.append(user_id)
+            if diff_hours >= 3:
+                mismatched.append((user_id, db_naive, panel_naive))
 
-        # 5. Формируем отчёт (без изменений)
+        # 5. Формируем отчёт
         report_lines = []
         report_lines.append(f"📊 Результаты проверки:\n")
         report_lines.append(f"👥 Всего проверено: {total}")
-        report_lines.append(f"❌ Расхождений в датах: {len(mismatched)}")
+        report_lines.append(f"❌ Расхождений в датах (>=3ч): {len(mismatched)}")
         report_lines.append(f"🔍 Не найдены в панели: {len(not_found_in_panel)}")
 
+        # Если есть расхождения и их количество не превышает лимит для прямого вывода
         if mismatched or not_found_in_panel:
             if len(mismatched) <= 50 and len(not_found_in_panel) <= 50:
                 if mismatched:
-                    report_lines.append("\n🆔 Расхождения:")
-                    report_lines.extend(str(uid) for uid in mismatched)
+                    report_lines.append("\n🆔 Расхождения (команды для синхронизации):")
+                    for uid, db_dt, panel_dt in mismatched:
+                        db_str = db_dt.strftime('%Y-%m-%d %H:%M:%S') if db_dt else 'None'
+                        panel_str = panel_dt.strftime('%Y-%m-%d %H:%M:%S') if panel_dt else 'None'
+                        report_lines.append(f"/sub {uid} {db_str} /sub {uid} {panel_str}")
                 if not_found_in_panel:
                     report_lines.append("\n🆔 Не найдены в панели:")
                     report_lines.extend(str(uid) for uid in not_found_in_panel)
                 await message.answer("\n".join(report_lines))
             else:
+                # Если много расхождений – отправляем файлом
                 import io
                 text_io = io.StringIO()
-                text_io.write("user_id\tstatus\n")
-                for uid in mismatched:
-                    text_io.write(f"{uid}\tmismatch\n")
+                text_io.write("user_id\tdb_date\tpanel_date\n")
+                for uid, db_dt, panel_dt in mismatched:
+                    db_str = db_dt.strftime('%Y-%m-%d %H:%M:%S') if db_dt else 'None'
+                    panel_str = panel_dt.strftime('%Y-%m-%d %H:%M:%S') if panel_dt else 'None'
+                    text_io.write(f"/sub {uid} {db_str} /sub {uid} {panel_str}\n")
                 for uid in not_found_in_panel:
                     text_io.write(f"{uid}\tnot_found\n")
                 text_io.seek(0)
@@ -469,7 +479,7 @@ async def check_users_command(message: Message):
                     caption="\n".join(report_lines[:5])
                 )
         else:
-            await message.answer("✅ Все оплаченные пользователи синхронизированы.")
+            await message.answer("✅ Все оплаченные пользователи синхронизированы (разница менее 3 часов).")
 
     except Exception as e:
         logger.exception("Ошибка в /check_users")
