@@ -32,10 +32,9 @@ async def check_online_daily():
         users_pay = 0
         users_trial = 0
         for tg_id in active_telegram_ids:
-            end_date = await sql.get_subscription_end_date(tg_id)
-            if end_date is not None:
-                days_left = (end_date.date() - datetime.now().date()).days
-                if days_left > 5:
+            user_data = await sql.SELECT_ID(tg_id)
+            if user_data:
+                if user_data[8]:
                     users_pay += 1
                 else:
                     users_trial += 1

@@ -63,17 +63,13 @@ async def user_info(message: Message):
 
 @router.message(Command(commands=['sub']))
 async def set_subscription_date(message: Message):
-    """Установка subscription_end_date или white_subscription_end_date в БД (только БД, не в панели)"""
-
-    # Проверка прав администратора
+    """Установка subscription_end_date или white_subscription_end_date в БД и панели"""
     if message.from_user.id not in ADMIN_IDS:
         await message.answer("❌ Эта команда доступна только администраторам.")
         return
 
     try:
-        # Извлекаем аргументы команды
         args = message.text.split()
-
         if len(args) < 3:
             await message.answer(
                 "❌ Использование:\n"
@@ -88,84 +84,64 @@ async def set_subscription_date(message: Message):
 
         user_id = int(args[1].strip())
 
-        # Определяем тип обновляемого поля
+        # Определяем тип и позицию даты
         if args[2].lower() == 'white':
-            field_type = 'white'
-            # Дата начинается с третьего аргумента
+            is_white = True
             date_str = " ".join(args[3:])
         else:
-            field_type = 'regular'
-            # Дата начинается со второго аргумента
+            is_white = False
             date_str = " ".join(args[2:])
 
-        # Парсим дату и время
-        try:
-            date_formats = [
-                "%Y-%m-%d %H:%M:%S",
-                "%Y-%m-%d %H:%M",
-                "%d.%m.%Y %H:%M:%S",
-                "%d.%m.%Y %H:%M"
-            ]
-
-            subscription_date = None
-            for date_format in date_formats:
-                try:
-                    subscription_date = datetime.strptime(date_str, date_format)
-                    break
-                except ValueError:
-                    continue
-
-            if subscription_date is None:
-                await message.answer(
-                    f"❌ Неверный формат даты: {date_str}\n"
-                    "Используйте формат: YYYY-MM-DD HH:MM:SS\n"
-                    "Пример: 2026-02-01 17:14:27"
-                )
-                return
-
-        except ValueError as e:
-            await message.answer(f"❌ Ошибка парсинга даты: {e}")
+        # Парсим дату
+        date_formats = [
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
+            "%d.%m.%Y %H:%M:%S",
+            "%d.%m.%Y %H:%M"
+        ]
+        target_date = None
+        for fmt in date_formats:
+            try:
+                target_date = datetime.strptime(date_str, fmt)
+                target_date = target_date.replace(tzinfo=timezone.utc)  # панель работает в UTC
+                break
+            except ValueError:
+                continue
+        if target_date is None:
+            await message.answer(f"❌ Неверный формат даты: {date_str}")
             return
 
-        # Проверяем, существует ли пользователь в БД
+        # Проверяем наличие пользователя в БД
         user_data = await sql.SELECT_ID(user_id)
-
         if not user_data:
-            await message.answer(f"❌ Пользователь с ID {user_id} не найден в базе данных.")
+            await message.answer("⚠️ Пользователь не найден в БД.")
             return
 
-        # Обновляем соответствующую дату в БД
-        try:
-            if field_type == 'white':
-                await sql.update_white_subscription_end_date(user_id, subscription_date)
-                # Получаем обновлённое значение для проверки (white_subscription_end_date — индекс 10)
-                updated_date = user_data[10] if len(user_data) > 10 else None
-                field_name = "white_subscription_end_date"
-            else:
-                await sql.update_subscription_end_date(user_id, subscription_date)
-                updated_date = await sql.get_subscription_end_date(user_id)
-                field_name = "subscription_end_date"
+        # Формируем username для панели
+        username = str(user_id) + ('_white' if is_white else '')
 
-            await message.answer(
-                f"✅ Дата подписки ({field_name}) успешно обновлена!\n\n"
-                f"👤 Пользователь: {user_id}\n"
-                f"📅 Новая дата окончания: {subscription_date.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                f"📝 Проверка из БД: {updated_date.strftime('%Y-%m-%d %H:%M:%S') if updated_date else 'Ошибка чтения'}\n\n"
-                f"⚠️ Внимание: Изменена только дата в БД. Подписка в панели управления (X3) не изменена."
-            )
+        # Устанавливаем дату в панели
+        success, actual_date = await x3.set_expiration_date(username, target_date, user_id)
 
-            logger.info(
-                f"Администратор {message.from_user.id} изменил {field_name} для пользователя {user_id} на {subscription_date}")
-        except Exception as e:
-            await message.answer(f"❌ Ошибка при обновлении даты в БД: {str(e)}")
-            logger.error(f"Ошибка update_subscription_end_date: {e}")
+        if not success or actual_date is None:
+            await message.answer("❌ Не удалось установить дату в панели. Подробности в логах.")
+            return
 
-    except ValueError:
+        if is_white:
+            await sql.update_white_subscription_end_date(user_id, actual_date)
+        else:
+            await sql.update_subscription_end_date(user_id, actual_date)
+
+        # Сообщаем результат
         await message.answer(
-            "❌ Неверный формат Telegram ID или даты.\n"
-            "Используйте: /sub 123456789 2026-02-01 17:14:27\n"
-            "Или: /sub 123456789 white 2026-02-01 17:14:27"
+            f"✅ Дата подписки успешно установлена!\n\n"
+            f"👤 Пользователь: {user_id}\n"
+            f"📅 Целевая дата (UTC): {target_date.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"📅 Установленная в панели дата (UTC): {actual_date.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"📝 Тип: {'white' if is_white else 'обычная'}\n"
+            f"💾 База данных обновлена."
         )
+
     except Exception as e:
         logger.error(f"Ошибка в команде /sub: {e}")
         await message.answer(f"❌ Произошла ошибка: {str(e)}")
@@ -261,10 +237,9 @@ async def check_online(message: Message):
     count_pay = 0
     count_trial = 0
     for tg_id in active_telegram_ids:
-        end_date = await sql.get_subscription_end_date(tg_id)
-        if end_date is not None:
-            days_left = (end_date.date() - datetime.now().date()).days
-            if days_left > 5:
+        user_data = await sql.SELECT_ID(tg_id)
+        if user_data:
+            if user_data[8]:
                 count_pay += 1
             else:
                 count_trial += 1
@@ -307,265 +282,6 @@ async def check_online(message: Message):
         except:
             pass
     await message.answer(f"{len(users_x3)} - всего юзеров в панели\n{success_count + fail_count} - онлайн сегодня\n{success_count} - обновлено\n{fail_count} - ошибка")
-
-
-@router.message(Command(commands=['check_connect']))
-async def force_check_connect_command(message: Message):
-    """Принудительная проверка подключённых пользователей и обновление Is_tarif в БД"""
-    if message.from_user.id not in ADMIN_IDS:
-        return
-
-    await message.answer("🔄 Запускаю проверку подключений всех пользователей...")
-    try:
-        await check_connect()  # функция уже содержит логику обновления Is_tarif
-        await message.answer("✅ Проверка завершена. Подробности в логах.")
-    except Exception as e:
-        logger.error(f"Ошибка при выполнении force_check_connect: {e}")
-        await message.answer(f"❌ Произошла ошибка: {e}")
-
-
-@router.message(Command(commands=['sync_panel']))
-async def sync_panel(message: Message):
-    if message.from_user.id not in ADMIN_IDS:
-        return
-
-    await message.answer("🔄 Запускаю синхронизацию пользователей...")
-
-    # 1. Получаем всех пользователей из панели и строим словарь {telegramId: user_data}
-    users_panel = await x3.get_all_users()
-    panel_dict = {}
-    for user in users_panel:
-        tg_id = user.get('telegramId')
-        if tg_id is not None:
-            panel_dict[tg_id] = user
-
-    # 2. Получаем список пользователей, у которых is_pay_null=True и subscription_end_date=None
-    users_for_sync = await sql.SELECT_SUBSCRIBED_NOT_IN_PANEL()
-
-    # 3. Статистика
-    updated = 0          # обновлено дат в БД
-    added_to_panel = 0   # добавлено в панель
-    not_found = 0        # не найдено в панели (остались в списке)
-
-    # 4. Обрабатываем каждого пользователя из списка на синхронизацию
-    for user_id in users_for_sync:
-        # Проверяем, есть ли пользователь в панели
-        if user_id in panel_dict:
-            user_data = panel_dict[user_id]
-
-            # Получаем expireAt и преобразуем в datetime
-            expire_str = user_data.get('expireAt')
-            if expire_str:
-                try:
-                    # Убираем 'Z' и добавляем временную зону UTC
-                    expire_dt = datetime.fromisoformat(expire_str.replace('Z', '+00:00'))
-                except Exception as e:
-                    logger.error(f"Ошибка парсинга expireAt для {user_id}: {e}")
-                    continue
-
-                await sql.update_subscription_end_date(user_id, expire_dt)
-                updated += 1
-                logger.info(f"Обновлена дата для {user_id} до {expire_dt}")
-        else:
-            # Пользователя нет в панели – добавляем его с нулевым сроком
-            # Используем стандартный addClient с day=0 (подписка сразу истекает)
-            user_id_str = str(user_id)
-            # Пытаемся добавить как обычного (без _white)
-            result = await x3.addClient(5, user_id_str, user_id)
-            if result:
-                added_to_panel += 1
-                logger.info(f"Добавлен в панель пользователь {user_id} (day=5)")
-                await bot.send_message(user_id,
-                                       'Добрый день. Мы создали Вам личный кабинет и начислили 5 дней пробного '
-                                       'доступа.\nПерейдите по ссылке, нажав на кнопку 🔗 Подключить VPN',
-                                       reply_markup=create_kb(1, connect_vpn='🔗 Подключить VPN'))
-            else:
-                not_found += 1
-                logger.warning(f"Не удалось добавить в панель пользователя {user_id}")
-
-    # 5. Итоговый отчёт
-    report = (
-        f"✅ Синхронизация завершена.\n"
-        f"📊 Всего в панели: {len(users_panel)}\n"
-        f"📋 Ожидало синхронизации: {len(users_for_sync)}\n"
-        f"🔄 Обновлено дат в БД: {updated}\n"
-        f"➕ Добавлено в панель (day=0): {added_to_panel}\n"
-        f"❌ Не удалось добавить (ошибки): {not_found}"
-    )
-    await message.answer(report)
-    logger.info(report)
-
-
-
-
-@router.message(Command(commands=['sub_update']))
-async def sub_update_command(message: Message):
-    """Корректировка срока подписки (обычной или white) в панели и БД."""
-    if message.from_user.id not in ADMIN_IDS:
-        return
-
-    args = message.text.split()
-    white_flag = False
-
-    # Разбор аргументов
-    if len(args) >= 2 and args[1].lower() == 'white':
-        white_flag = True
-        if len(args) < 4:
-            await message.answer("Использование: /sub_update white <telegram_id> <delta_days>")
-            return
-        user_id_str = args[2]
-        delta_str = args[3]
-    else:
-        if len(args) < 3:
-            await message.answer("Использование: /sub_update <telegram_id> <delta_days>")
-            return
-        user_id_str = args[1]
-        delta_str = args[2]
-
-    try:
-        user_id = int(user_id_str)
-        delta = int(delta_str)
-    except ValueError:
-        await message.answer("❌ Неверный формат ID или количества дней.")
-        return
-
-    username = str(user_id) + ('_white' if white_flag else '')
-
-    # Проверка наличия пользователя в БД (необязательно, но для информации)
-    user_data = await sql.SELECT_ID(user_id)
-    if not user_data:
-        await message.answer("⚠️ Пользователь не найден в БД, но операция может быть выполнена в панели.")
-
-    try:
-        success, new_expire = await x3.adjust_subscription_days(username, delta, user_id)
-
-        if not success:
-            await message.answer("❌ Ошибка при обновлении подписки в панели.")
-            return
-
-        if new_expire is not None:
-            # Обновляем БД (пользователь существовал, изменения в панели успешны)
-            if white_flag:
-                await sql.update_white_subscription_end_date(user_id, new_expire)
-            else:
-                await sql.update_subscription_end_date(user_id, new_expire)
-            await message.answer(
-                f"✅ Подписка обновлена.\n"
-                f"📅 Новая дата окончания: {new_expire.strftime('%Y-%m-%d %H:%M:%S')} UTC"
-            )
-        else:
-            # Пользователь был создан через addClient, БД уже обновлена
-            # Получаем дату из БД для отчёта
-            user_full = await sql.SELECT_ID(user_id)
-            if user_full:
-                final_date = user_full[10] if white_flag else user_full[
-                    9]  # white_subscription_end_date / subscription_end_date
-                if final_date:
-                    await message.answer(
-                        f"✅ Пользователь создан в панели.\n"
-                        f"📅 Дата окончания: {final_date.strftime('%Y-%m-%d %H:%M:%S')}"
-                    )
-                else:
-                    await message.answer("✅ Пользователь создан, но дата окончания не определена.")
-            else:
-                await message.answer("✅ Пользователь создан, но не удалось прочитать дату из БД.")
-    except Exception as e:
-        logger.error(f"Ошибка в /sub_update: {e}")
-        await message.answer(f"❌ Произошла ошибка: {e}")
-
-
-@router.message(Command(commands=['second_chance']))
-async def second_chance_command(message: Message):
-    """Добавляет 3 дня подписки пользователям с is_pay_null=True, is_tarif=True и subscription_end_date < 2026-03-06 01:00"""
-    if message.from_user.id not in ADMIN_IDS:
-        return
-
-    # Фиксированная дата отсечения (UTC)
-    cutoff = datetime(2026, 3, 6, 1, 0, 0)
-
-    await message.answer("🔍 Ищу пользователей для акции second_chance...")
-
-    async with sql.session_factory() as session:
-        stmt = select(Users).where(
-            Users.is_delete == False,
-            Users.is_pay_null == True,
-            Users.subscription_end_date.isnot(None),
-            Users.subscription_end_date < cutoff
-        )
-        result = await session.execute(stmt)
-        users = result.scalars().all()
-
-    total = len(users)
-    if total == 0:
-        await message.answer("❌ Нет пользователей, подходящих под условия.")
-        return
-
-    await message.answer(f"✅ Найдено {total} пользователей. Начинаю обработку...")
-
-    success_count = 0
-    fail_count = 0
-    msg_fail = 0
-    ttclid_updated = 0
-
-    for user in users:
-        user_id = user.user_id
-        username = str(user_id)  # обычная подписка (без _white)
-
-        try:
-            # 1. Добавляем 3 дня в панели и получаем новую дату
-            success, new_expire = await x3.adjust_subscription_days(username, 3, user_id)
-            if not success or new_expire is None:
-                logger.error(f"Ошибка обновления подписки для {user_id}")
-                fail_count += 1
-                continue
-
-            # 2. Обновляем дату в БД
-            await sql.update_subscription_end_date(user_id, new_expire)
-
-            # 3. Отправляем сообщение
-            try:
-                await bot.send_message(
-                    chat_id=user_id,
-                    text='''
-⚡️ Новые сервера. Космическая скорость. Второй шанс.
-
-Друзья, мы прокачали железо. Теперь наш VPN быстрый настолько, что вы забудете о буферизации. Идеально для игр и стриминговых сервисов.
-
-Это важно: <b>Мы добавили вам еще 3 дня</b>, чтобы вы оценили обновленную скорость.
-
-▶️ Если раньше были проблемы с подключением — вот видеоинструкция. Всё просто и понятно.
-
-Попробуйте сами. 🌐 Будьте свободны!
-                    ''',
-                    reply_markup=create_kb(1, connect_vpn='🔗 Подключить VPN', video_faq='Смотреть видеоинструкцию')
-                )
-                success_count += 1
-            except Exception as e:
-                logger.error(f"Не удалось отправить сообщение {user_id}: {e}")
-                msg_fail += 1
-
-            # 4. Обновляем ttclid
-            await sql.UPDATE_TTCLID(user_id, 'second_chance_100326')
-            ttclid_updated += 1
-
-            # Небольшая задержка, чтобы не нагружать API
-            await asyncio.sleep(0.1)
-
-        except Exception as e:
-            logger.error(f"Критическая ошибка при обработке {user_id}: {e}")
-            fail_count += 1
-
-    # Итоговый отчёт
-    report = (
-        f"✅ Акция second_chance завершена.\n"
-        f"📊 Всего подходящих: {total}\n"
-        f"🔄 Успешно обработано: {success_count}\n"
-        f"❌ Ошибок обновления подписки: {fail_count}\n"
-        f"📨 Ошибок отправки сообщений: {msg_fail}\n"
-        f"🏷 Обновлено ttclid: {ttclid_updated}"
-    )
-    await message.answer(report)
-    logger.info(report)
 
 
 @router.message(Command(commands=['get_second']))
@@ -643,16 +359,116 @@ async def get_second_command(message: Message):
         await message.answer(f"❌ Ошибка: {str(e)}")
 
 
-@router.message(Command(commands=['update_field']))
-async def update_reserve_field_command(message: Message):
-    """Устанавливает reserve_field = True для всех пользователей с подтверждёнными платежами."""
+@router.message(Command(commands=['check_users']))
+async def check_users_command(message: Message):
+    """Проверка соответствия дат окончания подписки у оплаченных пользователей (has_discount=True)"""
     if message.from_user.id not in ADMIN_IDS:
         return
 
-    await message.answer("🔄 Обновляю reserve_field для пользователей с подтверждёнными платежами...")
+    await message.answer("🔄 Начинаю проверку пользователей с оплатами...")
+
     try:
-        updated = await sql.set_has_discount_for_paid_users()
-        await message.answer(f"✅ Обновлено пользователей: {updated}")
+        # 1. Получаем список оплаченных пользователей из БД
+        users_with_discount = await sql.get_users_with_payment()
+        total = len(users_with_discount)
+        if total == 0:
+            await message.answer("❌ Нет пользователей с оплатами.")
+            return
+
+        # 2. Получаем всех пользователей из панели (один запрос)
+        panel_users = await x3.get_all_users()          # список словарей с полными данными
+        logger.info(f"Загружено {len(panel_users)} пользователей из панели")
+
+        # 3. Строим словарь для быстрого поиска по telegramId и username
+        panel_by_telegram = {}      # ключ: telegramId (int)
+        panel_by_username = {}      # ключ: username (str) – для тех, у кого нет telegramId
+
+        for user in panel_users:
+            tg_id = user.get('telegramId')
+            username = user.get('username')
+            if tg_id is not None:
+                panel_by_telegram[int(tg_id)] = user
+            elif username:
+                # если telegramId отсутствует, используем username как запасной ключ
+                panel_by_username[username] = user
+
+        # 4. Проходим по всем оплаченным пользователям и ищем их в панели
+        mismatched = []      # пользователи с расхождением дат
+        not_found_in_panel = []  # пользователи, отсутствующие в панели
+        processed = 0
+
+        for user_id in users_with_discount:
+            processed += 1
+            if processed % 10 == 0:
+                logger.info(f"Проверено {processed}/{total}")
+
+            # Пытаемся найти пользователя в панели
+            panel_user = panel_by_telegram.get(user_id)
+            if panel_user is None:
+                # не нашли по telegramId – пробуем по username (чистый id)
+                panel_user = panel_by_username.get(str(user_id))
+
+            if panel_user is None:
+                not_found_in_panel.append(user_id)
+                continue
+
+            expire_str = panel_user.get('expireAt')
+            if not expire_str:
+                mismatched.append(user_id)
+                continue
+
+            try:
+                panel_expire = datetime.fromisoformat(expire_str.replace('Z', '+00:00'))
+            except Exception:
+                mismatched.append(user_id)
+                continue
+
+            # Получаем дату из БД (обычная подписка)
+            db_expire = await sql.get_subscription_end_date(user_id)
+            if db_expire is None:
+                mismatched.append(user_id)
+                continue
+
+            # Сравниваем с точностью до минуты (игнорируем секунды и микросекунды)
+            panel_rounded = panel_expire.replace(second=0, microsecond=0)
+            db_rounded = db_expire.replace(second=0, microsecond=0)
+            if panel_rounded != db_rounded:
+                mismatched.append(user_id)
+
+        # 5. Формируем отчёт (без изменений)
+        report_lines = []
+        report_lines.append(f"📊 Результаты проверки:\n")
+        report_lines.append(f"👥 Всего проверено: {total}")
+        report_lines.append(f"❌ Расхождений в датах: {len(mismatched)}")
+        report_lines.append(f"🔍 Не найдены в панели: {len(not_found_in_panel)}")
+
+        if mismatched or not_found_in_panel:
+            if len(mismatched) <= 50 and len(not_found_in_panel) <= 50:
+                if mismatched:
+                    report_lines.append("\n🆔 Расхождения:")
+                    report_lines.extend(str(uid) for uid in mismatched)
+                if not_found_in_panel:
+                    report_lines.append("\n🆔 Не найдены в панели:")
+                    report_lines.extend(str(uid) for uid in not_found_in_panel)
+                await message.answer("\n".join(report_lines))
+            else:
+                import io
+                text_io = io.StringIO()
+                text_io.write("user_id\tstatus\n")
+                for uid in mismatched:
+                    text_io.write(f"{uid}\tmismatch\n")
+                for uid in not_found_in_panel:
+                    text_io.write(f"{uid}\tnot_found\n")
+                text_io.seek(0)
+                from aiogram.types import BufferedInputFile
+                file_data = BufferedInputFile(text_io.getvalue().encode(), filename="check_users_report.txt")
+                await message.answer_document(
+                    document=file_data,
+                    caption="\n".join(report_lines[:5])
+                )
+        else:
+            await message.answer("✅ Все оплаченные пользователи синхронизированы.")
+
     except Exception as e:
-        logger.error(f"Ошибка в /update_field: {e}")
-        await message.answer(f"❌ Ошибка: {e}")
+        logger.exception("Ошибка в /check_users")
+        await message.answer(f"❌ Ошибка: {str(e)}")

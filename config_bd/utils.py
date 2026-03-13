@@ -802,35 +802,13 @@ class AsyncSQL:
                 await session.commit()
                 logger.info(f"✅ Добавлена запись в white_counter для пользователя {user_id}")
 
-
-    async def set_has_discount_for_paid_users(self) -> int:
-        """
-        Устанавливает reserve_field = True для всех пользователей,
-        у которых есть хотя бы один подтверждённый платёж в любой из таблиц.
-        Возвращает количество обновлённых записей.
-        """
+    async def get_users_with_payment(self) -> List[int]:
+        """Возвращает список user_id пользователей с has_discount=True и is_delete=False."""
         async with self.session_factory() as session:
-
-            subq_payments = select(Payments.user_id).where(Payments.status == 'confirmed')
-            subq_cards = select(PaymentsCards.user_id).where(PaymentsCards.status == 'confirmed')
-            subq_platega_crypto = select(PaymentsPlategaCrypto.user_id).where(
-                PaymentsPlategaCrypto.status == 'confirmed')
-            subq_stars = select(PaymentsStars.user_id).where(PaymentsStars.status == 'confirmed')
-            subq_cryptobot = select(PaymentsCryptobot.user_id).where(PaymentsCryptobot.status == 'paid')
-
-            union_query = union(
-                subq_payments,
-                subq_cards,
-                subq_platega_crypto,
-                subq_stars,
-                subq_cryptobot
-            ).subquery()
-
-            stmt = (
-                update(Users)
-                .where(Users.user_id.in_(union_query))
-                .values(has_discount=True)
+            stmt = select(Users.user_id).where(
+                Users.has_discount == True
             )
             result = await session.execute(stmt)
-            await session.commit()
-            return result.rowcount
+            return [row[0] for row in result.all()]
+
+
