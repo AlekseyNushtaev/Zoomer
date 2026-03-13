@@ -428,9 +428,11 @@ async def check_users_command(message: Message):
             if db_expire is None:
                 mismatched.append(user_id)
                 continue
+            panel_naive = panel_expire.replace(tzinfo=None)
+            db_naive = db_expire.replace(tzinfo=None)
 
-            panel_rounded = panel_expire.replace(hour=0, minute=0, second=0, microsecond=0)
-            db_rounded = db_expire.replace(hour=0, minute=0, second=0, microsecond=0)
+            panel_rounded = panel_naive.replace(hour=0, minute=0, second=0, microsecond=0)
+            db_rounded = db_naive.replace(hour=0, minute=0, second=0, microsecond=0)
             if panel_rounded != db_rounded:
                 logger.warning(f'{panel_rounded} - {db_rounded}')
                 mismatched.append(user_id)
