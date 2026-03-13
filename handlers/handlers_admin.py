@@ -437,7 +437,7 @@ async def check_users_command(message: Message):
             db_naive = db_expire.replace(tzinfo=None)
             diff_hours = abs((panel_naive - db_naive).total_seconds()) / 3600
 
-            if diff_hours >= 3:
+            if diff_hours >= 4:
                 mismatched.append((user_id, db_naive, panel_naive))
 
         # 5. Формируем отчёт
