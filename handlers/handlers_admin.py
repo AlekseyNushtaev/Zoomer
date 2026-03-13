@@ -444,7 +444,7 @@ async def check_users_command(message: Message):
         report_lines = []
         report_lines.append(f"📊 Результаты проверки:\n")
         report_lines.append(f"👥 Всего проверено: {total}")
-        report_lines.append(f"❌ Расхождений в датах (>=3ч): {len(mismatched)}")
+        report_lines.append(f"❌ Расхождений в датах (>=4ч): {len(mismatched)}")
         report_lines.append(f"🔍 Не найдены в панели: {len(not_found_in_panel)}")
 
         # Если есть расхождения и их количество не превышает лимит для прямого вывода
