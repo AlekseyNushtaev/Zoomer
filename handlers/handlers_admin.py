@@ -484,3 +484,12 @@ async def check_users_command(message: Message):
     except Exception as e:
         logger.exception("Ошибка в /check_users")
         await message.answer(f"❌ Ошибка: {str(e)}")
+
+
+@router.message(Command(commands=['update_delete']))
+async def check_users_command(message: Message):
+    """Проверка соответствия дат окончания подписки у оплаченных пользователей (has_discount=True)"""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    await sql.UPDATE_DELETE_ALL(False)
+    await message.answer('Все юзеры разблокированы')

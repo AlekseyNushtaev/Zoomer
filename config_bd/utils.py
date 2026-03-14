@@ -87,6 +87,13 @@ class AsyncSQL:
             await session.execute(stmt)
             await session.commit()
 
+    async def UPDATE_DELETE_ALL(self, booly: bool):
+        async with self.session_factory() as session:
+            stmt = update(Users).values(is_delete=booly)
+            await session.execute(stmt)
+            await session.commit()
+
+
     async def SELECT_REF(self, user_id: int) -> Optional[Tuple]:
         async with self.session_factory() as session:
             stmt = select(Users).where(Users.user_id == user_id, Users.is_pay_null == True)

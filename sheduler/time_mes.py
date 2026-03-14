@@ -23,9 +23,16 @@ async def send_message_cron(bot: Bot):
             # Если метод get_subscription_end_date не асинхронный, убираем await
             end_date = await sql.get_subscription_end_date(user_id)
             user_data = await sql.SELECT_ID(user_id)
+            last_notification_date = await sql.get_last_notification_date(user_id)
             is_pay_flag = user_data[8]
             second_chance_flag = user_data[15]
             if end_date:
+                if last_notification_date:
+                    if isinstance(last_notification_date, datetime):
+                        last_notification_date = last_notification_date.date()
+                        today = datetime.now().date()
+                        if today == last_notification_date:
+                            continue
                 if isinstance(end_date, datetime):
                     end_date = end_date.date()  # Приводим к типу date, если это datetime
                 today = datetime.now().date()  # Приводим текущую дату и время к типу date
